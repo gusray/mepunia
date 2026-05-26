@@ -1,15 +1,29 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import api from '../services/api';
 
 const Login = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
-    // Simulate login
-    navigate('/dashboard');
+    setError('');
+    setLoading(true);
+    try {
+      const response = await api.post('/auth/login', { email, password });
+      localStorage.setItem('token', response.data.token);
+      localStorage.setItem('user', JSON.stringify(response.data.user));
+      window.dispatchEvent(new Event('storage')); // Trigger update for Navbar
+      navigate('/dashboard');
+    } catch (err) {
+      setError(err.response?.data?.message || 'Gagal masuk. Periksa kembali email dan password Anda.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -26,6 +40,11 @@ const Login = () => {
             Masuk untuk mulai menyalurkan dana punia
           </p>
         </div>
+        {error && (
+          <div className="bg-red-50 text-red-600 p-3 rounded-xl text-sm text-center border border-red-100">
+            {error}
+          </div>
+        )}
         <form className="mt-8 space-y-6" onSubmit={handleLogin}>
           <div className="space-y-4">
             <div>
@@ -81,9 +100,10 @@ const Login = () => {
           <div>
             <button
               type="submit"
-              className="group relative w-full flex justify-center py-3.5 px-4 border border-transparent text-sm font-bold rounded-xl text-white bg-primary hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary shadow-lg shadow-orange-200 transition-all"
+              disabled={loading}
+              className={`group relative w-full flex justify-center py-3.5 px-4 border border-transparent text-sm font-bold rounded-xl text-white ${loading ? 'bg-orange-300' : 'bg-primary hover:bg-orange-600 shadow-lg shadow-orange-200'} focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary transition-all`}
             >
-              Masuk
+              {loading ? 'Memproses...' : 'Masuk'}
             </button>
           </div>
         </form>

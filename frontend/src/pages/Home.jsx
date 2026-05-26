@@ -1,31 +1,25 @@
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, ShieldCheck, Heart, Bell } from 'lucide-react';
-
-const mockPuras = [
-  {
-    id: '1',
-    name: 'Pura Besakih',
-    address: 'Karangasem, Bali',
-    image_url: 'https://images.unsplash.com/photo-1537953773345-d172ccf13cf1?auto=format&fit=crop&q=80&w=800',
-    description: 'Pura terbesar dan tersuci di Bali, terletak di lereng Gunung Agung.'
-  },
-  {
-    id: '2',
-    name: 'Pura Uluwatu',
-    address: 'Pecatu, Bali',
-    image_url: 'https://images.unsplash.com/photo-1554481923-a691c626a575?auto=format&fit=crop&q=80&w=800',
-    description: 'Terkenal dengan lokasi megahnya di atas tebing curam.'
-  },
-  {
-    id: '3',
-    name: 'Pura Tanah Lot',
-    address: 'Tabanan, Bali',
-    image_url: 'https://images.unsplash.com/photo-1544644181-1484b3fdfc62?auto=format&fit=crop&q=80&w=800',
-    description: 'Ikon pariwisata Bali dengan pemandangan matahari terbenam yang indah.'
-  }
-];
+import api from '../services/api';
 
 const Home = () => {
+  const [puras, setPuras] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchPuras = async () => {
+      try {
+        const res = await api.get('/puras');
+        setPuras(res.data);
+      } catch (error) {
+        console.error('Failed to fetch puras', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchPuras();
+  }, []);
   return (
     <div className="space-y-16 py-8">
       {/* Hero Section */}
@@ -90,17 +84,24 @@ const Home = () => {
         </div>
 
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {mockPuras.map((pura) => (
+          {loading ? (
+            <div className="col-span-full text-center py-12 text-gray-500">Memuat daftar Pura...</div>
+          ) : puras.length === 0 ? (
+            <div className="col-span-full text-center py-12 text-gray-500 bg-white rounded-2xl border border-gray-100 border-dashed">Belum ada Pura yang terdaftar.</div>
+          ) : puras.map((pura) => (
             <div key={pura.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-lg transition-all group">
-              <div className="h-48 overflow-hidden">
+              <div className="h-48 overflow-hidden bg-gray-100">
                 <img 
-                  src={pura.image_url} 
+                  src={pura.image_url || 'https://images.unsplash.com/photo-1537953773345-d172ccf13cf1?auto=format&fit=crop&q=80&w=800'} 
                   alt={pura.name} 
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                  onError={(e) => { e.target.src = 'https://images.unsplash.com/photo-1537953773345-d172ccf13cf1?auto=format&fit=crop&q=80&w=800'; }}
                 />
               </div>
               <div className="p-6">
-                <h3 className="text-xl font-bold text-dark mb-1">{pura.name}</h3>
+                <h3 className="text-xl font-bold text-dark mb-1 flex items-center gap-2">
+                  {pura.name} {pura.is_verified && <ShieldCheck size={16} className="text-secondary" />}
+                </h3>
                 <p className="text-sm text-gray-500 mb-4">{pura.address}</p>
                 <p className="text-gray-600 text-sm line-clamp-2 mb-6">
                   {pura.description}

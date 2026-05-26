@@ -1,17 +1,29 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import api from '../services/api';
 
 const Register = () => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState('user');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  const handleRegister = (e) => {
+  const handleRegister = async (e) => {
     e.preventDefault();
-    // Simulate register
-    navigate('/login');
+    setError('');
+    setLoading(true);
+    try {
+      await api.post('/auth/register', { name, email, password, role });
+      alert('Registrasi berhasil! Silakan masuk.');
+      navigate('/login');
+    } catch (err) {
+      setError(err.response?.data?.message || 'Gagal mendaftar. Silakan coba lagi.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -28,6 +40,11 @@ const Register = () => {
             Bergabung bersama ribuan umat Hindu lainnya
           </p>
         </div>
+        {error && (
+          <div className="bg-red-50 text-red-600 p-3 rounded-xl text-sm text-center border border-red-100">
+            {error}
+          </div>
+        )}
         <form className="mt-8 space-y-6" onSubmit={handleRegister}>
           <div className="space-y-4">
             <div>
@@ -89,9 +106,10 @@ const Register = () => {
           <div>
             <button
               type="submit"
-              className="group relative w-full flex justify-center py-3.5 px-4 border border-transparent text-sm font-bold rounded-xl text-white bg-primary hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary shadow-lg shadow-orange-200 transition-all"
+              disabled={loading}
+              className={`group relative w-full flex justify-center py-3.5 px-4 border border-transparent text-sm font-bold rounded-xl text-white ${loading ? 'bg-orange-300' : 'bg-primary hover:bg-orange-600 shadow-lg shadow-orange-200'} focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary transition-all`}
             >
-              Daftar Sekarang
+              {loading ? 'Memproses...' : 'Daftar Sekarang'}
             </button>
           </div>
         </form>
