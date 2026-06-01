@@ -5,6 +5,7 @@ const Donation = require('./donation');
 const PaymentTransaction = require('./paymentTransaction');
 const Report = require('./report');
 const Reminder = require('./reminder');
+const Event = require('./event');
 
 // Define Associations
 
@@ -32,6 +33,10 @@ Report.belongsTo(Pura, { foreignKey: 'pura_id', as: 'pura' });
 User.hasMany(Reminder, { foreignKey: 'user_id', as: 'reminders' });
 Reminder.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
 
+// Pura has many Events
+Pura.hasMany(Event, { foreignKey: 'pura_id', as: 'events', onDelete: 'CASCADE' });
+Event.belongsTo(Pura, { foreignKey: 'pura_id', as: 'pura' });
+
 module.exports = {
   sequelize,
   User,
@@ -40,4 +45,6 @@ module.exports = {
   PaymentTransaction,
   Report,
   Reminder,
+  Event,
 };
+

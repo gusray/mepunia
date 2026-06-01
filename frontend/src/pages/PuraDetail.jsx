@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { ShieldCheck, Calendar, MapPin, CheckCircle } from 'lucide-react';
+import { ShieldCheck, Calendar, MapPin, CheckCircle, Clock } from 'lucide-react';
 import api from '../services/api';
 
 const PuraDetail = () => {
   const { id } = useParams();
   const [pura, setPura] = useState(null);
+  const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [amount, setAmount] = useState('');
   const [message, setMessage] = useState('');
@@ -24,7 +25,18 @@ const PuraDetail = () => {
         setLoading(false);
       }
     };
+
+    const fetchEvents = async () => {
+      try {
+        const res = await api.get(`/events/pura/${id}`);
+        setEvents(res.data);
+      } catch (error) {
+        console.error('Failed to fetch pura events', error);
+      }
+    };
+
     fetchPura();
+    fetchEvents();
   }, [id]);
 
   const handleDonation = async (e) => {
@@ -91,13 +103,64 @@ const PuraDetail = () => {
       </div>
 
       <div className="grid lg:grid-cols-3 gap-8">
-        {/* Left Column: Details & Reports */}
+        {/* Left Column: Details & Events */}
         <div className="lg:col-span-2 space-y-8">
           <section className="bg-white p-6 sm:p-8 rounded-2xl shadow-sm border border-gray-100">
             <h2 className="text-2xl font-bold text-dark mb-4">Tentang Pura</h2>
             <p className="text-gray-600 leading-relaxed whitespace-pre-wrap">
               {pura.description}
             </p>
+          </section>
+
+          {/* Jadwal Acara / Upacara Section */}
+          <section className="bg-white p-6 sm:p-8 rounded-2xl shadow-sm border border-gray-100">
+            <h2 className="text-2xl font-bold text-dark mb-6 flex items-center gap-2">
+              <Calendar className="text-primary" />
+              <span>Jadwal Upacara & Kegiatan</span>
+            </h2>
+            
+            {events.length === 0 ? (
+              <div className="text-center py-10 text-gray-500 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
+                Belum ada jadwal upacara terdekat yang direncanakan.
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {events.map((event) => {
+                  const eventDate = new Date(event.date);
+                  const day = eventDate.getDate();
+                  const month = eventDate.toLocaleDateString('id-ID', { month: 'short' }).toUpperCase();
+                  const fullDate = eventDate.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+
+                  return (
+                    <div key={event.id} className="group p-5 rounded-2xl border border-gray-100 hover:border-orange-200 bg-white hover:shadow-md transition-all duration-300 flex gap-5 items-start">
+                      {/* Calendar Date Badge */}
+                      <div className="flex-shrink-0 w-16 h-16 bg-orange-50 text-primary border border-orange-100 rounded-2xl flex flex-col items-center justify-center font-extrabold group-hover:bg-primary group-hover:text-white group-hover:border-primary transition-colors duration-300">
+                        <span className="text-2xl leading-none">{day}</span>
+                        <span className="text-xs tracking-wider mt-0.5">{month}</span>
+                      </div>
+
+                      {/* Event Description */}
+                      <div className="flex-grow space-y-2">
+                        <h3 className="text-lg font-bold text-dark group-hover:text-primary transition-colors">{event.name}</h3>
+                        <p className="text-xs text-gray-500 font-medium flex flex-wrap gap-x-4 gap-y-1">
+                          <span className="flex items-center gap-1">
+                            <Calendar size={13} className="text-primary group-hover:text-primary transition-colors" />
+                            {fullDate}
+                          </span>
+                          {event.time && (
+                            <span className="flex items-center gap-1">
+                              <Clock size={13} className="text-primary group-hover:text-primary transition-colors" />
+                              {event.time}
+                            </span>
+                          )}
+                        </p>
+                        <p className="text-gray-600 text-sm leading-relaxed whitespace-pre-wrap">{event.description}</p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </section>
         </div>
 

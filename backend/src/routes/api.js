@@ -6,6 +6,7 @@ const puraController = require('../controllers/puraController');
 const donationController = require('../controllers/donationController');
 const reportController = require('../controllers/reportController');
 const reminderController = require('../controllers/reminderController');
+const eventController = require('../controllers/eventController');
 
 const { authenticateToken, optionalAuthenticateToken, isAdmin } = require('../middlewares/authMiddleware');
 
@@ -33,4 +34,12 @@ router.get('/reports/pura/:puraId', reportController.getPuraReports); // Publicl
 router.post('/reminders', authenticateToken, reminderController.createReminder);
 router.get('/reminders', authenticateToken, reminderController.getUserReminders);
 
+// --- Event Routes ---
+router.post('/events', authenticateToken, isAdmin, eventController.createEvent);
+router.put('/events/:id', authenticateToken, isAdmin, eventController.updateEvent);
+router.delete('/events/:id', authenticateToken, isAdmin, eventController.deleteEvent);
+router.get('/events/pura/:puraId', eventController.getPuraEvents);
+router.get('/events', eventController.getAllEvents);
+
 module.exports = router;
+

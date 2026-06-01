@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, ShieldCheck, Heart, Bell } from 'lucide-react';
+import { ArrowRight, ShieldCheck, Heart, Bell, Calendar, Clock } from 'lucide-react';
 import api from '../services/api';
 
 const Home = () => {
   const [puras, setPuras] = useState([]);
+  const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -18,8 +19,21 @@ const Home = () => {
         setLoading(false);
       }
     };
+
+    const fetchEvents = async () => {
+      try {
+        const res = await api.get('/events');
+        // We only take the top 3 upcoming events for the homepage highlight
+        setEvents(res.data.slice(0, 3));
+      } catch (error) {
+        console.error('Failed to fetch events', error);
+      }
+    };
+
     fetchPuras();
+    fetchEvents();
   }, []);
+
   return (
     <div className="space-y-16 py-8">
       {/* Hero Section */}
@@ -41,9 +55,6 @@ const Home = () => {
             <a href="#explore" className="bg-primary text-white px-6 py-3 rounded-xl font-semibold shadow-lg shadow-orange-200 hover:bg-orange-600 transition-all flex items-center gap-2">
               Mulai Punia <ArrowRight size={20} />
             </a>
-            <Link to="/register" className="bg-white text-primary px-6 py-3 rounded-xl font-semibold shadow-md hover:shadow-lg transition-all border border-orange-100">
-              Daftar Pura
-            </Link>
           </div>
         </div>
       </section>
@@ -72,6 +83,61 @@ const Home = () => {
           <p className="text-gray-600">Dapatkan notifikasi otomatis untuk hari raya besar Hindu agar tidak terlewat berpunia.</p>
         </div>
       </section>
+
+      {/* Upcoming Events Section */}
+      {events.length > 0 && (
+        <section className="bg-gradient-to-br from-orange-50/50 to-amber-50/30 p-6 sm:p-10 rounded-3xl border border-orange-100/40">
+          <div className="mb-8">
+            <span className="text-primary font-bold text-xs tracking-wider uppercase">Agenda Terdekat</span>
+            <h2 className="text-2xl sm:text-3xl font-extrabold text-dark mt-1">Upacara Pura Mendatang</h2>
+            <p className="text-gray-600 text-sm sm:text-base mt-1">Mari berpartisipasi dan salurkan Dana Punia untuk mendukung kelancaran upacara keagamaan.</p>
+          </div>
+
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {events.map((event) => {
+              const eventDate = new Date(event.date);
+              const day = eventDate.getDate();
+              const month = eventDate.toLocaleDateString('id-ID', { month: 'short' }).toUpperCase();
+              const fullDate = eventDate.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+
+              return (
+                <div key={event.id} className="bg-white rounded-2xl p-6 border border-orange-100/30 shadow-sm hover:shadow-md transition-all duration-300 flex flex-col justify-between group">
+                  <div>
+                    {/* Date and Temple Tag */}
+                    <div className="flex justify-between items-start gap-4 mb-4">
+                      <div className="w-12 h-12 bg-orange-100/60 text-primary border border-orange-100 rounded-xl flex flex-col items-center justify-center font-extrabold flex-shrink-0 group-hover:bg-primary group-hover:text-white transition-colors duration-300">
+                        <span className="text-lg leading-none font-extrabold">{day}</span>
+                        <span className="text-[10px] tracking-wide font-bold">{month}</span>
+                      </div>
+                      <span className="px-3 py-1 bg-gray-50 text-gray-500 border border-gray-100 text-xs font-semibold rounded-full truncate max-w-[150px]">
+                        {event.pura?.name || 'Pura'}
+                      </span>
+                    </div>
+
+                    {/* Event Name */}
+                    <h3 className="font-bold text-dark text-lg group-hover:text-primary transition-colors mb-2 line-clamp-1">{event.name}</h3>
+                    
+                    {/* Time / Info */}
+                    <div className="flex items-center gap-1.5 text-xs text-gray-500 mb-4 font-medium">
+                      <Calendar size={13} className="text-primary flex-shrink-0" />
+                      <span className="truncate">{fullDate}</span>
+                    </div>
+
+                    {/* Description */}
+                    <p className="text-gray-600 text-sm line-clamp-3 leading-relaxed mb-6">{event.description}</p>
+                  </div>
+
+                  {/* Actions */}
+                  <Link to={`/pura/${event.pura_id}`} className="flex items-center justify-center gap-2 w-full text-center bg-orange-50 hover:bg-primary hover:text-white text-primary hover:shadow-md hover:shadow-orange-100 font-bold py-2.5 px-4 rounded-xl transition-all text-xs">
+                    <span>Punia Sekarang</span>
+                    <ArrowRight size={14} />
+                  </Link>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       {/* Explore Pura Section */}
       <section id="explore">
