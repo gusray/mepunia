@@ -25,6 +25,8 @@ router.post('/donations', optionalAuthenticateToken, donationController.createDo
 router.post('/payments/webhook', donationController.midtransWebhook); // Midtrans callback
 router.get('/donations/history', authenticateToken, donationController.getUserDonationHistory);
 router.get('/donations/pura/:puraId', authenticateToken, isAdmin, donationController.getPuraDonations);
+router.get('/donations/public/pura/:puraId', donationController.getPublicPuraDonations);
+
 
 // --- Report Routes ---
 router.post('/reports', authenticateToken, isAdmin, reportController.createReport);

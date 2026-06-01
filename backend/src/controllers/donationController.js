@@ -157,9 +157,44 @@ const getPuraDonations = async (req, res) => {
   }
 };
 
+const getPublicPuraDonations = async (req, res) => {
+  try {
+    const pura_id = req.params.puraId;
+    
+    const donations = await Donation.findAll({
+      where: { pura_id },
+      include: [
+        { model: User, as: 'donatur', attributes: ['id', 'name'] },
+        { 
+          model: PaymentTransaction, 
+          as: 'payment', 
+          where: { transaction_status: 'success' }, 
+          attributes: ['gross_amount', 'transaction_time', 'payment_type'] 
+        }
+      ],
+      order: [['createdAt', 'DESC']],
+    });
+
+    const sanitized = donations.map(d => {
+      const donationObj = d.toJSON();
+      if (donationObj.is_anonymous || !donationObj.donatur) {
+        donationObj.donatur = { name: 'Anonim' };
+      }
+      return donationObj;
+    });
+
+    res.json(sanitized);
+  } catch (error) {
+    console.error('Error fetching public pura donations:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
 module.exports = {
   createDonation,
   midtransWebhook,
   getUserDonationHistory,
   getPuraDonations,
+  getPublicPuraDonations,
 };
+

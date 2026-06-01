@@ -1,12 +1,32 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { ShieldCheck, Calendar, MapPin, CheckCircle, Clock } from 'lucide-react';
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import api from '../services/api';
+
+const processChartData = (donationsList) => {
+  const sorted = [...donationsList].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+  const groups = {};
+  sorted.forEach(d => {
+    const dateStr = new Date(d.createdAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
+    const amount = Number(d.amount);
+    groups[dateStr] = (groups[dateStr] || 0) + amount;
+  });
+  const data = Object.keys(groups).map(date => ({
+    name: date,
+    amount: groups[date]
+  }));
+  if (data.length === 0) {
+    return [{ name: 'Belum ada data', amount: 0 }];
+  }
+  return data;
+};
 
 const PuraDetail = () => {
   const { id } = useParams();
   const [pura, setPura] = useState(null);
   const [events, setEvents] = useState([]);
+  const [publicDonations, setPublicDonations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [amount, setAmount] = useState('');
   const [message, setMessage] = useState('');
@@ -35,8 +55,18 @@ const PuraDetail = () => {
       }
     };
 
+    const fetchPublicDonations = async () => {
+      try {
+        const res = await api.get(`/donations/public/pura/${id}`);
+        setPublicDonations(res.data);
+      } catch (error) {
+        console.error('Failed to fetch public donations', error);
+      }
+    };
+
     fetchPura();
     fetchEvents();
+    fetchPublicDonations();
   }, [id]);
 
   const handleDonation = async (e) => {
@@ -155,6 +185,89 @@ const PuraDetail = () => {
                           )}
                         </p>
                         <p className="text-gray-600 text-sm leading-relaxed whitespace-pre-wrap">{event.description}</p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+
+          {/* Tren Dana Punia Chart Section */}
+          <section className="bg-white p-6 sm:p-8 rounded-2xl shadow-sm border border-gray-100">
+            <h2 className="text-2xl font-bold text-dark mb-2 flex items-center gap-2">
+              <span className="text-primary font-bold"></span>
+              <span>Tren Penerimaan Dana Punia</span>
+            </h2>
+            <p className="text-gray-500 text-sm mb-6">Grafik fluktuasi perolehan dana punia yang disalurkan umat dari waktu ke waktu.</p>
+            
+            {publicDonations.length === 0 ? (
+              <div className="text-center py-10 text-gray-500 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
+                Belum ada data transaksi punia masuk untuk pura ini.
+              </div>
+            ) : (
+              <div className="h-64 mt-4 animate-fade-in">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={processChartData(publicDonations)} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="colorAmountPura" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#F97316" stopOpacity={0.3}/>
+                        <stop offset="95%" stopColor="#F97316" stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 11}} />
+                    <YAxis axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 11}} tickFormatter={(value) => `Rp${value/1000}k`} />
+                    <Tooltip 
+                      contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                      formatter={(value) => [`Rp ${value.toLocaleString('id-ID')}`, 'Dana Punia']}
+                    />
+                    <Area type="monotone" dataKey="amount" stroke="#F97316" strokeWidth={3} fillOpacity={1} fill="url(#colorAmountPura)" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </section>
+
+          {/* Riwayat Penerimaan Punia Umat */}
+          <section className="bg-white p-6 sm:p-8 rounded-2xl shadow-sm border border-gray-100">
+            <h2 className="text-2xl font-bold text-dark mb-2 flex items-center gap-2">
+              <span className="text-primary font-bold"></span>
+              <span>Riwayat Dana Punia Umat</span>
+            </h2>
+            <p className="text-gray-500 text-sm mb-6">Daftar umat yang telah menyalurkan dana punia.</p>
+
+            {publicDonations.length === 0 ? (
+              <div className="text-center py-10 text-gray-500 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
+                Belum ada riwayat punia masuk. Mari salurkan punia pertama Anda di kolom sebelah kanan!
+              </div>
+            ) : (
+              <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 scrollbar-thin">
+                {publicDonations.map((don) => {
+                  const donDate = new Date(don.createdAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+                  const donAmount = Number(don.amount);
+                  
+                  return (
+                    <div key={don.id} className="p-4 rounded-xl border border-gray-50 hover:bg-gray-55/50 transition-all flex justify-between items-start gap-4 hover:translate-x-0.5 duration-200">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-bold text-dark text-sm sm:text-base">
+                            {don.is_anonymous ? 'Anonim' : (don.donatur?.name || 'Anonim')}
+                          </h4>
+                          {don.is_anonymous && (
+                            <span className="text-[10px] bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full font-medium">Anonim</span>
+                          )}
+                        </div>
+                        <p className="text-xs text-gray-400 font-medium">{donDate}</p>
+                        {don.message && (
+                          <p className="text-gray-600 text-sm bg-orange-50/40 p-2.5 rounded-xl border border-orange-50/30 italic mt-2">
+                            "{don.message}"
+                          </p>
+                        )}
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        <span className="text-primary font-extrabold text-sm sm:text-base whitespace-nowrap">
+                          + Rp {donAmount.toLocaleString('id-ID')}
+                        </span>
                       </div>
                     </div>
                   );
