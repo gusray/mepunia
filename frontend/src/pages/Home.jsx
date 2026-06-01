@@ -1,12 +1,18 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, ShieldCheck, Heart, Bell, Calendar, Clock } from 'lucide-react';
+import { ArrowRight, ShieldCheck, Heart, Bell, Calendar, Clock, Search } from 'lucide-react';
 import api from '../services/api';
 
 const Home = () => {
   const [puras, setPuras] = useState([]);
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const filteredPuras = puras.filter(pura => 
+    pura.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    pura.address.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   useEffect(() => {
     const fetchPuras = async () => {
@@ -141,20 +147,35 @@ const Home = () => {
 
       {/* Explore Pura Section */}
       <section id="explore">
-        <div className="flex justify-between items-end mb-8">
+        <div className="flex flex-col md:flex-row md:justify-between md:items-end gap-4 mb-8">
           <div>
             <h2 className="text-3xl font-bold text-dark mb-2">Jelajahi Pura</h2>
             <p className="text-gray-600">Pilih Pura yang ingin Anda salurkan dana punia.</p>
           </div>
-          <Link to="/" className="text-primary font-semibold hover:underline hidden sm:block">Lihat Semua</Link>
+          
+          {/* Search Bar */}
+          <div className="relative w-full md:w-80">
+            <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400">
+              <Search size={18} />
+            </span>
+            <input
+              type="text"
+              placeholder="Cari Pura berdasarkan nama/lokasi..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-2.5 bg-white border border-orange-100 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all shadow-sm shadow-orange-50"
+            />
+          </div>
         </div>
 
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
           {loading ? (
             <div className="col-span-full text-center py-12 text-gray-500">Memuat daftar Pura...</div>
-          ) : puras.length === 0 ? (
-            <div className="col-span-full text-center py-12 text-gray-500 bg-white rounded-2xl border border-gray-100 border-dashed">Belum ada Pura yang terdaftar.</div>
-          ) : puras.map((pura) => (
+          ) : filteredPuras.length === 0 ? (
+            <div className="col-span-full text-center py-12 text-gray-500 bg-white rounded-2xl border border-orange-100/50 border-dashed">
+              {puras.length === 0 ? 'Belum ada Pura yang terdaftar.' : 'Tidak ada Pura yang cocok dengan pencarian Anda.'}
+            </div>
+          ) : filteredPuras.map((pura) => (
             <div key={pura.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-lg transition-all group">
               <div className="h-48 overflow-hidden bg-gray-100">
                 <img 
