@@ -1,25 +1,82 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { ShieldCheck, Calendar, MapPin, CheckCircle, Clock } from 'lucide-react';
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import api from '../services/api';
 
-const processChartData = (donationsList) => {
-  const sorted = [...donationsList].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
-  const groups = {};
-  sorted.forEach(d => {
-    const dateStr = new Date(d.createdAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
-    const amount = Number(d.amount);
-    groups[dateStr] = (groups[dateStr] || 0) + amount;
-  });
-  const data = Object.keys(groups).map(date => ({
-    name: date,
-    amount: groups[date]
-  }));
-  if (data.length === 0) {
-    return [{ name: 'Belum ada data', amount: 0 }];
+const processChartData = (donationsList, filterType) => {
+  const successDonations = donationsList;
+  
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth();
+  
+  if (filterType === 'weekly') {
+    // Get Monday of the current week (local time)
+    const startOfWeek = new Date(now);
+    const day = startOfWeek.getDay();
+    const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1); // adjust when day is sunday
+    startOfWeek.setDate(diff);
+    startOfWeek.setHours(0, 0, 0, 0);
+    
+    const dayNames = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'];
+    return dayNames.map((name, index) => {
+      const dayDate = new Date(startOfWeek);
+      dayDate.setDate(startOfWeek.getDate() + index);
+      const startOfDay = new Date(dayDate);
+      startOfDay.setHours(0,0,0,0);
+      const endOfDay = new Date(dayDate);
+      endOfDay.setHours(23,59,59,999);
+      
+      const totalAmount = successDonations
+        .filter(d => {
+          const dDate = new Date(d.createdAt);
+          return dDate >= startOfDay && dDate <= endOfDay;
+        })
+        .reduce((sum, curr) => sum + Number(curr.amount), 0);
+        
+      return { name, amount: totalAmount };
+    });
   }
-  return data;
+  
+  if (filterType === 'monthly') {
+    const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+    const daysData = [];
+    
+    for (let i = 1; i <= daysInMonth; i++) {
+      const totalAmount = successDonations
+        .filter(d => {
+          const dDate = new Date(d.createdAt);
+          return dDate.getDate() === i && 
+                 dDate.getMonth() === currentMonth && 
+                 dDate.getFullYear() === currentYear;
+        })
+        .reduce((sum, curr) => sum + Number(curr.amount), 0);
+        
+      daysData.push({ name: `${i}`, amount: totalAmount });
+    }
+    return daysData;
+  }
+  
+  if (filterType === 'yearly') {
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+    console.log("processChartData successDonations:", successDonations, "currentYear:", currentYear);
+    return monthNames.map((name, index) => {
+      const totalAmount = successDonations
+        .filter(d => {
+          const dDate = new Date(d.createdAt);
+          const monthMatch = dDate.getMonth() === index;
+          const yearMatch = dDate.getFullYear() === currentYear;
+          console.log(`Donation ${d.id}: d.createdAt=${d.createdAt}, parsedMonth=${dDate.getMonth()} (index=${index}), parsedYear=${dDate.getFullYear()} (currentYear=${currentYear}), monthMatch=${monthMatch}, yearMatch=${yearMatch}`);
+          return monthMatch && yearMatch;
+        })
+        .reduce((sum, curr) => sum + Number(curr.amount), 0);
+        
+      return { name, amount: totalAmount };
+    });
+  }
+  
+  return [{ name: 'Belum ada data', amount: 0 }];
 };
 
 const PuraDetail = () => {
@@ -33,6 +90,7 @@ const PuraDetail = () => {
   const [isAnonymous, setIsAnonymous] = useState(false);
   const [isMonthly, setIsMonthly] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [chartFilter, setChartFilter] = useState('monthly');
 
   useEffect(() => {
     const fetchPura = async () => {
@@ -113,6 +171,8 @@ const PuraDetail = () => {
 
   if (loading) return <div className="py-12 text-center text-gray-500">Memuat detail Pura...</div>;
   if (!pura) return <div className="py-12 text-center text-gray-500">Pura tidak ditemukan.</div>;
+
+  const totalPuniaPura = publicDonations.reduce((acc, curr) => acc + Number(curr.amount), 0);
 
   return (
     <div className="py-8">
@@ -195,11 +255,39 @@ const PuraDetail = () => {
 
           {/* Tren Dana Punia Chart Section */}
           <section className="bg-white p-6 sm:p-8 rounded-2xl shadow-sm border border-gray-100">
-            <h2 className="text-2xl font-bold text-dark mb-2 flex items-center gap-2">
-              <span className="text-primary font-bold"></span>
-              <span>Tren Penerimaan Dana Punia</span>
-            </h2>
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-2">
+              <h2 className="text-2xl font-bold text-dark flex items-center gap-2">
+                <span className="text-primary font-bold"></span>
+                <span>Tren Penerimaan Dana Punia</span>
+              </h2>
+              
+              {/* Filter Buttons */}
+              <div className="flex bg-gray-50 border border-gray-100 rounded-xl p-1 self-start sm:self-center">
+                {[
+                  { id: 'weekly', label: 'Mingguan' },
+                  { id: 'monthly', label: 'Bulanan' },
+                  { id: 'yearly', label: 'Tahunan' },
+                ].map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => setChartFilter(opt.id)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${chartFilter === opt.id ? 'bg-primary text-white shadow-sm' : 'text-gray-500 hover:text-primary'}`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
             <p className="text-gray-500 text-sm mb-6">Grafik fluktuasi perolehan dana punia yang disalurkan umat dari waktu ke waktu.</p>
+            
+            {/* Total Punia Display */}
+            <div className="bg-orange-50/60 border border-orange-100/50 rounded-2xl p-5 mb-6 animate-fade-in">
+              <div>
+                <p className="text-gray-500 text-sm font-medium mb-1">Total Dana Punia Terkumpul</p>
+                <h3 className="text-3xl font-extrabold text-primary">Rp {totalPuniaPura.toLocaleString('id-ID')}</h3>
+              </div>
+            </div>
             
             {publicDonations.length === 0 ? (
               <div className="text-center py-10 text-gray-500 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
@@ -208,21 +296,16 @@ const PuraDetail = () => {
             ) : (
               <div className="h-64 mt-4 animate-fade-in">
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={processChartData(publicDonations)} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                    <defs>
-                      <linearGradient id="colorAmountPura" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#F97316" stopOpacity={0.3}/>
-                        <stop offset="95%" stopColor="#F97316" stopOpacity={0}/>
-                      </linearGradient>
-                    </defs>
+                  <BarChart data={processChartData(publicDonations, chartFilter)} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                     <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 11}} />
                     <YAxis axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 11}} tickFormatter={(value) => `Rp${value/1000}k`} />
                     <Tooltip 
                       contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
                       formatter={(value) => [`Rp ${value.toLocaleString('id-ID')}`, 'Dana Punia']}
                     />
-                    <Area type="monotone" dataKey="amount" stroke="#F97316" strokeWidth={3} fillOpacity={1} fill="url(#colorAmountPura)" />
-                  </AreaChart>
+                    <Bar dataKey="amount" fill="#F97316" radius={[6, 6, 0, 0]} barSize={40} />
+                  </BarChart>
                 </ResponsiveContainer>
               </div>
             )}

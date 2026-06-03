@@ -1,7 +1,76 @@
 import { useState, useEffect } from 'react';
 import { CreditCard, Calendar, Bell, Download, Search, Plus, Trash2, Edit, Clock, MapPin, Sparkles } from 'lucide-react';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import api from '../services/api';
+
+const processDashboardChartData = (donationsList, filterType) => {
+  const successDonations = donationsList.filter(d => 
+    d.payment?.transaction_status === 'success' || 
+    d.payment?.transaction_status === 'settlement'
+  );
+  
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth();
+  
+  if (filterType === 'weekly') {
+    // Get Monday of the current week
+    const currentDay = now.getDay();
+    const distanceToMonday = currentDay === 0 ? -6 : 1 - currentDay;
+    const startOfWeek = new Date(now);
+    startOfWeek.setDate(now.getDate() + distanceToMonday);
+    startOfWeek.setHours(0, 0, 0, 0);
+    
+    const dayNames = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'];
+    return dayNames.map((name, index) => {
+      const dayDate = new Date(startOfWeek);
+      dayDate.setDate(startOfWeek.getDate() + index);
+      const dateString = dayDate.toDateString();
+      
+      const totalAmount = successDonations
+        .filter(d => new Date(d.createdAt).toDateString() === dateString)
+        .reduce((sum, curr) => sum + Number(curr.amount), 0);
+        
+      return { name, amount: totalAmount };
+    });
+  }
+  
+  if (filterType === 'monthly') {
+    const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+    const daysData = [];
+    
+    for (let i = 1; i <= daysInMonth; i++) {
+      const totalAmount = successDonations
+        .filter(d => {
+          const dDate = new Date(d.createdAt);
+          return dDate.getDate() === i && 
+                 dDate.getMonth() === currentMonth && 
+                 dDate.getFullYear() === currentYear;
+        })
+        .reduce((sum, curr) => sum + Number(curr.amount), 0);
+        
+      daysData.push({ name: `${i}`, amount: totalAmount });
+    }
+    return daysData;
+  }
+  
+  if (filterType === 'yearly') {
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+    return monthNames.map((name, index) => {
+      const totalAmount = successDonations
+        .filter(d => {
+          const dDate = new Date(d.createdAt);
+          return dDate.getMonth() === index && 
+                 dDate.getFullYear() === currentYear;
+        })
+        .reduce((sum, curr) => sum + Number(curr.amount), 0);
+        
+      return { name, amount: totalAmount };
+    });
+  }
+  
+  return [{ name: 'Belum ada data', amount: 0 }];
+};
 
 const Dashboard = () => {
   const [activeTab, setActiveTab] = useState('overview');
@@ -9,6 +78,7 @@ const Dashboard = () => {
   const [totalPunia, setTotalPunia] = useState(0);
   const [puraCount, setPuraCount] = useState(0);
   const [user, setUser] = useState(null);
+  const [chartFilter, setChartFilter] = useState('monthly');
   
   // Admin Pura States
   const [managedPuras, setManagedPuras] = useState([]);
@@ -34,8 +104,14 @@ const Dashboard = () => {
         const data = res.data;
         setDonations(data);
         
-        // Calculate stats
-        const total = data.reduce((acc, curr) => acc + Number(curr.amount), 0);
+        // Filter only success transactions for total stats
+        const successDonations = data.filter(d => 
+          d.payment?.transaction_status === 'success' || 
+          d.payment?.transaction_status === 'settlement'
+        );
+        
+        // Calculate stats using only success donations
+        const total = successDonations.reduce((acc, curr) => acc + Number(curr.amount), 0);
         setTotalPunia(total);
         
         const uniquePuras = new Set(data.map(d => d.pura_id));
@@ -72,11 +148,7 @@ const Dashboard = () => {
     fetchAdminData();
   }, []);
 
-  // Format data for chart (simple mock grouping for MVP)
-  const chartData = [
-    { name: 'Prev', amount: 0 },
-    { name: 'Current', amount: totalPunia },
-  ];
+  // Removed mock chartData to use dynamic processDashboardChartData instead
 
   // --- PURA CRUD HANDLERS ---
   const handleAddPura = async (e) => {
@@ -272,26 +344,39 @@ const Dashboard = () => {
 
           {/* Chart Section */}
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-lg font-bold text-dark">Grafik Punia 2026</h3>
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6">
+              <h3 className="text-lg font-bold text-dark">Grafik Dana Punia</h3>
+              
+              {/* Filter Buttons */}
+              <div className="flex bg-gray-50 border border-gray-100 rounded-xl p-1 self-start sm:self-center">
+                {[
+                  { id: 'weekly', label: 'Mingguan' },
+                  { id: 'monthly', label: 'Bulanan' },
+                  { id: 'yearly', label: 'Tahunan' },
+                ].map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => setChartFilter(opt.id)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${chartFilter === opt.id ? 'bg-primary text-white shadow-sm' : 'text-gray-500 hover:text-primary'}`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
             </div>
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="colorAmount" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#F97316" stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor="#F97316" stopOpacity={0}/>
-                    </linearGradient>
-                  </defs>
+                <BarChart data={processDashboardChartData(donations, chartFilter)} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                   <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} />
                   <YAxis axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} tickFormatter={(value) => `Rp${value/1000}k`} />
                   <Tooltip 
                     contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
                     formatter={(value) => [`Rp ${value.toLocaleString()}`, 'Punia']}
                   />
-                  <Area type="monotone" dataKey="amount" stroke="#F97316" strokeWidth={3} fillOpacity={1} fill="url(#colorAmount)" />
-                </AreaChart>
+                  <Bar dataKey="amount" fill="#F97316" radius={[8, 8, 0, 0]} barSize={40} />
+                </BarChart>
               </ResponsiveContainer>
             </div>
           </div>
