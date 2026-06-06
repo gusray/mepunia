@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { CreditCard, Calendar, Bell, Download, Search, Plus, Trash2, Edit, Clock, MapPin, Sparkles, Shield, User, CheckCircle, XCircle, FileText } from 'lucide-react';
+import { CreditCard, Calendar, Bell, Download, Search, Plus, Trash2, Edit, Clock, MapPin, Sparkles, Shield, User, CheckCircle, XCircle, FileText, Upload } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import api from '../services/api';
 
@@ -103,6 +103,35 @@ const Dashboard = () => {
   const [editingEvent, setEditingEvent] = useState(null); // stores the event object if editing
   const [newEvent, setNewEvent] = useState({ pura_id: '', name: '', date: '', time: '', description: '', image_url: '' });
   const [isSubmittingEvent, setIsSubmittingEvent] = useState(false);
+
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+
+  const handleImageUpload = async (file, type) => {
+    if (!file) return;
+    setIsUploadingImage(true);
+    const formData = new FormData();
+    formData.append('image', file);
+
+    try {
+      const res = await api.post('/upload', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      const url = res.data.secure_url;
+      if (type === 'new') {
+        setNewPura(prev => ({ ...prev, image_url: url }));
+      } else if (type === 'edit') {
+        setEditingPura(prev => ({ ...prev, image_url: url }));
+      }
+      alert('Gambar berhasil diunggah!');
+    } catch (error) {
+      console.error('Error uploading image', error);
+      alert('Gagal mengunggah gambar: ' + (error.response?.data?.message || error.message));
+    } finally {
+      setIsUploadingImage(false);
+    }
+  };
 
   const fetchSuperAdminData = async () => {
     try {
@@ -902,8 +931,39 @@ const Dashboard = () => {
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">URL Gambar (Opsional)</label>
-                  <input type="text" value={newPura.image_url} onChange={e => setNewPura({...newPura, image_url: e.target.value})} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all" placeholder="https://..." />
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Foto Pura</label>
+                  {newPura.image_url ? (
+                    <div className="relative rounded-xl overflow-hidden border border-gray-200 h-48 bg-gray-50 flex items-center justify-center">
+                      <img src={newPura.image_url} alt="Preview" className="w-full h-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => setNewPura(prev => ({ ...prev, image_url: '' }))}
+                        className="absolute top-2 right-2 bg-red-650 text-white p-2 rounded-full hover:bg-red-750 transition-all shadow-md"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  ) : (
+                    <label className="border-2 border-dashed border-gray-300 hover:border-primary rounded-xl p-6 flex flex-col items-center justify-center gap-2 cursor-pointer transition-all bg-gray-50/50 hover:bg-orange-50/10">
+                      <Upload className="text-gray-400" size={28} />
+                      <div className="text-center">
+                        <span className="text-sm font-semibold text-primary block">Pilih File Foto Pura</span>
+                        <span className="text-xs text-gray-500 block mt-0.5">PNG, JPG, JPEG sampai 5MB</span>
+                      </div>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={e => handleImageUpload(e.target.files[0], 'new')}
+                        disabled={isUploadingImage}
+                      />
+                    </label>
+                  )}
+                  {isUploadingImage && (
+                    <div className="mt-2 text-xs text-primary flex items-center gap-1.5 font-medium animate-pulse">
+                      <span>Sedang mengunggah foto ke Cloudinary...</span>
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Deskripsi Pura</label>
@@ -932,8 +992,39 @@ const Dashboard = () => {
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">URL Gambar</label>
-                  <input type="text" value={editingPura.image_url || ''} onChange={e => setEditingPura({...editingPura, image_url: e.target.value})} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all" placeholder="https://..." />
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Foto Pura</label>
+                  {editingPura.image_url ? (
+                    <div className="relative rounded-xl overflow-hidden border border-gray-200 h-48 bg-gray-50 flex items-center justify-center">
+                      <img src={editingPura.image_url} alt="Preview" className="w-full h-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => setEditingPura(prev => ({ ...prev, image_url: '' }))}
+                        className="absolute top-2 right-2 bg-red-650 text-white p-2 rounded-full hover:bg-red-750 transition-all shadow-md"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  ) : (
+                    <label className="border-2 border-dashed border-gray-300 hover:border-primary rounded-xl p-6 flex flex-col items-center justify-center gap-2 cursor-pointer transition-all bg-gray-50/50 hover:bg-orange-50/10">
+                      <Upload className="text-gray-400" size={28} />
+                      <div className="text-center">
+                        <span className="text-sm font-semibold text-primary block">Pilih File Foto Pura</span>
+                        <span className="text-xs text-gray-500 block mt-0.5">PNG, JPG, JPEG sampai 5MB</span>
+                      </div>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={e => handleImageUpload(e.target.files[0], 'edit')}
+                        disabled={isUploadingImage}
+                      />
+                    </label>
+                  )}
+                  {isUploadingImage && (
+                    <div className="mt-2 text-xs text-primary flex items-center gap-1.5 font-medium animate-pulse">
+                      <span>Sedang mengunggah foto ke Cloudinary...</span>
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Deskripsi Pura</label>

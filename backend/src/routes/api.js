@@ -21,13 +21,47 @@ router.get('/puras/:id', puraController.getPuraById);
 router.post('/puras', authenticateToken, isAdmin, puraController.createPura);
 router.put('/puras/:id', authenticateToken, isAdmin, puraController.updatePura);
 
+// --- Upload Route ---
+const upload = require('../middlewares/uploadMiddleware');
+const cloudinary = require('../config/cloudinary');
+
+router.post('/upload', authenticateToken, isAdmin, upload.single('image'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: 'Tidak ada file yang diunggah' });
+    }
+
+    const streamUpload = (fileBuffer) => {
+      return new Promise((resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream(
+          { folder: 'mepunia' },
+          (error, result) => {
+            if (error) return reject(error);
+            resolve(result);
+          }
+        );
+        stream.end(fileBuffer);
+      });
+    };
+
+    const result = await streamUpload(req.file.buffer);
+    res.json({
+      message: 'Upload sukses',
+      secure_url: result.secure_url,
+      public_id: result.public_id,
+    });
+  } catch (error) {
+    console.error('Error uploading to Cloudinary:', error);
+    res.status(500).json({ message: 'Gagal mengunggah gambar', error: error.message });
+  }
+});
+
 // --- Donation Routes ---
 router.post('/donations', optionalAuthenticateToken, donationController.createDonation);
 router.post('/payments/webhook', donationController.midtransWebhook); // Midtrans callback
 router.get('/donations/history', authenticateToken, donationController.getUserDonationHistory);
 router.get('/donations/pura/:puraId', authenticateToken, isAdmin, donationController.getPuraDonations);
 router.get('/donations/public/pura/:puraId', donationController.getPublicPuraDonations);
-
 
 // --- Report Routes ---
 router.post('/reports', authenticateToken, isAdmin, reportController.createReport);
@@ -55,4 +89,3 @@ router.get('/superadmin/admins', authenticateToken, isSuperAdmin, adminApplicati
 router.get('/superadmin/transactions', authenticateToken, isSuperAdmin, adminApplicationController.getAllTransactions);
 
 module.exports = router;
-
