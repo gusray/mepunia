@@ -6,8 +6,13 @@ const PaymentTransaction = require('./paymentTransaction');
 const Report = require('./report');
 const Reminder = require('./reminder');
 const Event = require('./event');
+const AdminApplication = require('./adminApplication');
 
 // Define Associations
+
+// User has one AdminApplication
+User.hasOne(AdminApplication, { foreignKey: 'user_id', as: 'adminApplication', onDelete: 'CASCADE' });
+AdminApplication.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
 
 // User (Admin) has many Puras
 User.hasMany(Pura, { foreignKey: 'admin_id', as: 'managedPuras' });
@@ -46,5 +51,6 @@ module.exports = {
   Report,
   Reminder,
   Event,
+  AdminApplication,
 };
 

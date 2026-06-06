@@ -33,10 +33,18 @@ const optionalAuthenticateToken = (req, res, next) => {
 };
 
 const isAdmin = (req, res, next) => {
-  if (req.user && req.user.role === 'admin') {
+  if (req.user && (req.user.role === 'admin' || req.user.role === 'superadmin')) {
     next();
   } else {
     res.status(403).json({ message: 'Require Admin Role' });
+  }
+};
+
+const isSuperAdmin = (req, res, next) => {
+  if (req.user && req.user.role === 'superadmin') {
+    next();
+  } else {
+    res.status(403).json({ message: 'Require Super Admin Role' });
   }
 };
 
@@ -44,4 +52,5 @@ module.exports = {
   authenticateToken,
   optionalAuthenticateToken,
   isAdmin,
+  isSuperAdmin,
 };

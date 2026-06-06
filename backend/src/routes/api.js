@@ -6,9 +6,10 @@ const puraController = require('../controllers/puraController');
 const donationController = require('../controllers/donationController');
 const reportController = require('../controllers/reportController');
 const reminderController = require('../controllers/reminderController');
+const adminApplicationController = require('../controllers/adminApplicationController');
 const eventController = require('../controllers/eventController');
 
-const { authenticateToken, optionalAuthenticateToken, isAdmin } = require('../middlewares/authMiddleware');
+const { authenticateToken, optionalAuthenticateToken, isAdmin, isSuperAdmin } = require('../middlewares/authMiddleware');
 
 // --- Auth Routes ---
 router.post('/auth/register', authController.register);
@@ -42,6 +43,16 @@ router.put('/events/:id', authenticateToken, isAdmin, eventController.updateEven
 router.delete('/events/:id', authenticateToken, isAdmin, eventController.deleteEvent);
 router.get('/events/pura/:puraId', eventController.getPuraEvents);
 router.get('/events', eventController.getAllEvents);
+
+// --- Admin Application Routes ---
+router.post('/admin-applications', authenticateToken, adminApplicationController.submitApplication);
+router.get('/admin-applications/status', authenticateToken, adminApplicationController.getApplicationStatus);
+
+// --- Superadmin Routes ---
+router.get('/superadmin/applications', authenticateToken, isSuperAdmin, adminApplicationController.getAdminApplications);
+router.post('/superadmin/applications/:id/review', authenticateToken, isSuperAdmin, adminApplicationController.reviewApplication);
+router.get('/superadmin/admins', authenticateToken, isSuperAdmin, adminApplicationController.getAdminsAndPuras);
+router.get('/superadmin/transactions', authenticateToken, isSuperAdmin, adminApplicationController.getAllTransactions);
 
 module.exports = router;
 

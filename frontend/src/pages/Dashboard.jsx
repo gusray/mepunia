@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { CreditCard, Calendar, Bell, Download, Search, Plus, Trash2, Edit, Clock, MapPin, Sparkles } from 'lucide-react';
+import { CreditCard, Calendar, Bell, Download, Search, Plus, Trash2, Edit, Clock, MapPin, Sparkles, Shield, User, CheckCircle, XCircle, FileText } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import api from '../services/api';
 
@@ -80,6 +80,16 @@ const Dashboard = () => {
   const [user, setUser] = useState(null);
   const [chartFilter, setChartFilter] = useState('monthly');
   
+  // User/Application States
+  const [applicationStatus, setApplicationStatus] = useState(null);
+  const [isLoadingAppStatus, setIsLoadingAppStatus] = useState(false);
+
+  // Superadmin States
+  const [applications, setApplications] = useState([]);
+  const [adminsList, setAdminsList] = useState([]);
+  const [allTransactions, setAllTransactions] = useState([]);
+  const [superadminStats, setSuperadminStats] = useState({ totalIncome: 0, totalPuras: 0, totalAdmins: 0 });
+
   // Admin Pura States
   const [managedPuras, setManagedPuras] = useState([]);
   const [showAddPura, setShowAddPura] = useState(false);
@@ -93,6 +103,52 @@ const Dashboard = () => {
   const [editingEvent, setEditingEvent] = useState(null); // stores the event object if editing
   const [newEvent, setNewEvent] = useState({ pura_id: '', name: '', date: '', time: '', description: '', image_url: '' });
   const [isSubmittingEvent, setIsSubmittingEvent] = useState(false);
+
+  const fetchSuperAdminData = async () => {
+    try {
+      // 1. Applications
+      const appsRes = await api.get('/superadmin/applications');
+      setApplications(appsRes.data);
+
+      // 2. Admins & Puras
+      const adminsRes = await api.get('/superadmin/admins');
+      setAdminsList(adminsRes.data);
+
+      // 3. Transactions
+      const txRes = await api.get('/superadmin/transactions');
+      const txData = txRes.data;
+      setAllTransactions(txData);
+
+      // Calculate stats
+      const successTx = txData.filter(t => t.payment?.transaction_status === 'success' || t.payment?.transaction_status === 'settlement');
+      const totalIncome = successTx.reduce((sum, item) => sum + Number(item.amount), 0);
+      
+      const adminCount = adminsRes.data.length;
+      
+      const purasRes = await api.get('/puras');
+      const totalPuras = purasRes.data.length;
+
+      setSuperadminStats({
+        totalIncome,
+        totalPuras,
+        totalAdmins: adminCount
+      });
+    } catch (error) {
+      console.error('Failed to fetch superadmin data', error);
+    }
+  };
+
+  const handleReviewApplication = async (appId, status) => {
+    if (!confirm(`Apakah Anda yakin ingin ${status === 'approved' ? 'menyetujui' : 'menolak'} pengajuan pengurus ini?`)) return;
+    try {
+      const res = await api.post(`/superadmin/applications/${appId}/review`, { status });
+      alert(res.data.message);
+      fetchSuperAdminData();
+    } catch (error) {
+      console.error('Failed to review application', error);
+      alert('Gagal meninjau pengajuan: ' + (error.response?.data?.message || error.message));
+    }
+  };
 
   useEffect(() => {
     const userData = JSON.parse(localStorage.getItem('user') || '{}');
@@ -144,11 +200,38 @@ const Dashboard = () => {
       }
     };
 
-    fetchDonations();
-    fetchAdminData();
-  }, []);
+    const fetchAppStatus = async () => {
+      if (userData.role === 'user') {
+        try {
+          setIsLoadingAppStatus(true);
+          const res = await api.get('/admin-applications/status');
+          setApplicationStatus(res.data);
+          
+          // Auto-promote if application was approved
+          if (res.data && res.data.status === 'approved') {
+            const updatedUser = { ...userData, role: 'admin' };
+            localStorage.setItem('user', JSON.stringify(updatedUser));
+            setUser(updatedUser);
+            window.dispatchEvent(new Event('storage'));
+            alert('Pengajuan Anda telah disetujui! Memuat ulang dashboard Anda...');
+            window.location.reload();
+          }
+        } catch (error) {
+          console.error('Failed to fetch application status', error);
+        } finally {
+          setIsLoadingAppStatus(false);
+        }
+      }
+    };
 
-  // Removed mock chartData to use dynamic processDashboardChartData instead
+    if (userData.role === 'superadmin') {
+      fetchSuperAdminData();
+    } else {
+      fetchDonations();
+      fetchAdminData();
+      fetchAppStatus();
+    }
+  }, []);
 
   // --- PURA CRUD HANDLERS ---
   const handleAddPura = async (e) => {
@@ -256,12 +339,104 @@ const Dashboard = () => {
   return (
     <div className="py-8">
       {/* Welcome Header */}
-      <div className="mb-8 flex flex-col md:flex-row md:justify-between md:items-end gap-4">
+      <div className="mb-8 flex flex-col md:flex-row md:justify-between md:items-start gap-4 bg-white p-6 rounded-3xl border border-gray-50 shadow-sm">
         <div>
           <h1 className="text-3xl font-extrabold text-dark mb-2">Om Swastyastu, {user?.name || 'Umat'}!</h1>
-          <p className="text-gray-600">Selamat datang di dashboard {user?.role === 'admin' ? 'Pengurus Pura' : 'Donatur'}.</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-gray-500 font-medium">Peran Saat Ini:</p>
+            <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+              user?.role === 'superadmin' ? 'bg-purple-100 text-purple-705 border border-purple-200' :
+              user?.role === 'admin' ? 'bg-green-100 text-green-705 border border-green-200' :
+              'bg-orange-100 text-primary border border-orange-200'
+            }`}>
+              {user?.role === 'superadmin' ? 'Superadmin Platform' :
+               user?.role === 'admin' ? 'Pengurus Pura (Admin)' :
+               'Donatur / Umat'}
+            </span>
+          </div>
         </div>
+
+        {/* User Application Status Banners */}
+        {user?.role === 'user' && (
+          <div className="flex-1 max-w-xl md:text-right">
+            {isLoadingAppStatus ? (
+              <div className="animate-pulse bg-gray-100 h-10 w-full rounded-xl"></div>
+            ) : applicationStatus ? (
+              <div className={`p-4 rounded-2xl border text-left flex items-start gap-3 ${
+                applicationStatus.status === 'pending' ? 'bg-yellow-50/50 border-yellow-100 text-yellow-805' :
+                applicationStatus.status === 'approved' ? 'bg-green-50/50 border-green-100 text-green-805' :
+                'bg-red-50/50 border-red-100 text-red-805'
+              }`}>
+                {applicationStatus.status === 'pending' && (
+                  <>
+                    <Clock className="text-yellow-600 flex-shrink-0 mt-0.5" size={18} />
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-wider">Status Pengajuan: Menunggu Verifikasi</p>
+                      <p className="text-xs text-gray-600 mt-0.5">Berkas kepengurusan Pura <strong>{applicationStatus.pura_name}</strong> sedang ditinjau oleh Superadmin.</p>
+                    </div>
+                  </>
+                )}
+                {applicationStatus.status === 'rejected' && (
+                  <>
+                    <XCircle className="text-red-650 flex-shrink-0 mt-0.5" size={18} />
+                    <div className="flex-grow">
+                      <p className="text-xs font-bold uppercase tracking-wider">Status Pengajuan: Ditolak</p>
+                      <p className="text-xs text-gray-600 mt-0.5 mb-2">Mohon maaf, berkas pengajuan kepengurusan Pura Anda belum dapat kami verifikasi.</p>
+                      <button
+                        onClick={() => navigate('/apply-admin')}
+                        className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded-lg text-2xs font-bold transition-all shadow-sm"
+                      >
+                        Ajukan Ulang Berkas
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            ) : (
+              <div className="p-4 bg-orange-50/50 border border-orange-100 rounded-2xl text-left flex items-center justify-between gap-4">
+                <div>
+                  <h4 className="text-xs font-bold text-dark uppercase tracking-wider">Mengelola Pura Anda?</h4>
+                  <p className="text-xs text-gray-600 mt-0.5">Ajukan diri Anda sebagai pengurus resmi Pura untuk mulai menerima dana punia online.</p>
+                </div>
+                <button
+                  onClick={() => navigate('/apply-admin')}
+                  className="px-4 py-2 bg-primary hover:bg-orange-600 text-white rounded-xl text-xs font-bold transition-all whitespace-nowrap shadow-md shadow-orange-100"
+                >
+                  Ajukan Pengurus
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
+
+      {/* Superadmin Tab Switcher */}
+      {user?.role === 'superadmin' && (
+        <div className="flex gap-1 border-b border-gray-200 mb-8 overflow-x-auto scrollbar-none">
+          {[
+            { id: 'overview', label: 'Ringkasan Platform', icon: CreditCard },
+            { id: 'applications', label: 'Persetujuan Admin', icon: Shield },
+            { id: 'admins', label: 'Pengurus & Pura', icon: User },
+            { id: 'transactions', label: 'Log Transaksi', icon: FileText },
+          ].map((tab) => {
+            const Icon = tab.icon;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex items-center gap-2 px-6 py-3 border-b-2 font-semibold text-sm transition-all whitespace-nowrap ${
+                  activeTab === tab.id
+                    ? 'border-primary text-primary'
+                    : 'border-transparent text-gray-500 hover:text-primary hover:border-gray-300'
+                }`}
+              >
+                <Icon size={18} />
+                <span>{tab.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* Admin Tab Switcher */}
       {user?.role === 'admin' && (
@@ -297,50 +472,90 @@ const Dashboard = () => {
       )}
 
       {/* ========================================================
-          TAB 1: OVERVIEW (Available for everyone)
+          TAB 1: OVERVIEW
           ======================================================== */}
       {activeTab === 'overview' && (
-        <div className="space-y-8">
+        <div className="space-y-8 animate-fade-in">
           {/* Stats Cards */}
-          <div className="grid md:grid-cols-3 gap-6">
-            <div className="bg-gradient-to-br from-primary to-orange-400 p-6 rounded-2xl text-white shadow-lg shadow-orange-100 transition-all hover:scale-[1.01]">
-              <div className="flex justify-between items-start mb-4">
-                <div>
-                  <p className="text-orange-50 mb-1 font-medium">Total Dana Punia</p>
-                  <h2 className="text-3xl font-extrabold">Rp {totalPunia.toLocaleString('id-ID')}</h2>
-                </div>
-                <div className="p-2 bg-white/20 rounded-xl backdrop-blur-sm">
-                  <CreditCard size={24} />
+          {user?.role === 'superadmin' ? (
+            <div className="grid md:grid-cols-3 gap-6">
+              <div className="bg-gradient-to-br from-primary to-orange-400 p-6 rounded-2xl text-white shadow-lg shadow-orange-100 transition-all hover:scale-[1.01]">
+                <div className="flex justify-between items-start mb-4">
+                  <div>
+                    <p className="text-orange-50 mb-1 font-medium">Total Dana Punia Platform</p>
+                    <h2 className="text-3xl font-extrabold">Rp {superadminStats.totalIncome.toLocaleString('id-ID')}</h2>
+                  </div>
+                  <div className="p-2 bg-white/20 rounded-xl backdrop-blur-sm">
+                    <CreditCard size={24} />
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 transition-all hover:scale-[1.01]">
-              <div className="flex justify-between items-start mb-4">
-                <div>
-                  <p className="text-gray-500 mb-1 font-medium">Pura Dibantu</p>
-                  <h2 className="text-3xl font-extrabold text-dark">{puraCount}</h2>
-                </div>
-                <div className="p-2 bg-orange-50 text-primary rounded-xl">
-                  <MapPin size={24} />
-                </div>
-              </div>
-            </div>
-            
-            {user?.role === 'admin' && (
               <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 transition-all hover:scale-[1.01]">
                 <div className="flex justify-between items-start mb-4">
                   <div>
-                    <p className="text-gray-500 mb-1 font-medium">Acara Keagamaan</p>
-                    <h2 className="text-3xl font-extrabold text-dark">{events.length}</h2>
+                    <p className="text-gray-500 mb-1 font-medium">Total Pura Terdaftar</p>
+                    <h2 className="text-3xl font-extrabold text-dark">{superadminStats.totalPuras}</h2>
                   </div>
                   <div className="p-2 bg-orange-50 text-primary rounded-xl">
-                    <Calendar size={24} />
+                    <MapPin size={24} />
                   </div>
                 </div>
               </div>
-            )}
-          </div>
+
+              <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 transition-all hover:scale-[1.01]">
+                <div className="flex justify-between items-start mb-4">
+                  <div>
+                    <p className="text-gray-500 mb-1 font-medium">Total Admin (Pengurus)</p>
+                    <h2 className="text-3xl font-extrabold text-dark">{superadminStats.totalAdmins}</h2>
+                  </div>
+                  <div className="p-2 bg-orange-50 text-primary rounded-xl">
+                    <User size={24} />
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="grid md:grid-cols-3 gap-6">
+              <div className="bg-gradient-to-br from-primary to-orange-400 p-6 rounded-2xl text-white shadow-lg shadow-orange-100 transition-all hover:scale-[1.01]">
+                <div className="flex justify-between items-start mb-4">
+                  <div>
+                    <p className="text-orange-50 mb-1 font-medium">Total Dana Punia</p>
+                    <h2 className="text-3xl font-extrabold">Rp {totalPunia.toLocaleString('id-ID')}</h2>
+                  </div>
+                  <div className="p-2 bg-white/20 rounded-xl backdrop-blur-sm">
+                    <CreditCard size={24} />
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 transition-all hover:scale-[1.01]">
+                <div className="flex justify-between items-start mb-4">
+                  <div>
+                    <p className="text-gray-500 mb-1 font-medium">Pura Dibantu</p>
+                    <h2 className="text-3xl font-extrabold text-dark">{puraCount}</h2>
+                  </div>
+                  <div className="p-2 bg-orange-50 text-primary rounded-xl">
+                    <MapPin size={24} />
+                  </div>
+                </div>
+              </div>
+              
+              {user?.role === 'admin' && (
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 transition-all hover:scale-[1.01]">
+                  <div className="flex justify-between items-start mb-4">
+                    <div>
+                      <p className="text-gray-500 mb-1 font-medium">Acara Keagamaan</p>
+                      <h2 className="text-3xl font-extrabold text-dark">{events.length}</h2>
+                    </div>
+                    <div className="p-2 bg-orange-50 text-primary rounded-xl">
+                      <Calendar size={24} />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Chart Section */}
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
@@ -367,7 +582,7 @@ const Dashboard = () => {
             </div>
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={processDashboardChartData(donations, chartFilter)} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                <BarChart data={processDashboardChartData(user?.role === 'superadmin' ? allTransactions : donations, chartFilter)} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                   <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} />
                   <YAxis axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} tickFormatter={(value) => `Rp${value/1000}k`} />
@@ -384,7 +599,9 @@ const Dashboard = () => {
           {/* History Section */}
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
             <div className="flex justify-between items-center mb-6">
-              <h3 className="text-lg font-bold text-dark">Riwayat Transaksi</h3>
+              <h3 className="text-lg font-bold text-dark">
+                {user?.role === 'superadmin' ? 'Recent Transactions (Platform-Wide)' : 'Riwayat Transaksi'}
+              </h3>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
@@ -397,9 +614,9 @@ const Dashboard = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {donations.length === 0 ? (
+                  {(user?.role === 'superadmin' ? allTransactions : donations).length === 0 ? (
                     <tr><td colSpan="4" className="py-4 text-center text-gray-500">Belum ada riwayat donasi</td></tr>
-                  ) : donations.map((tx) => (
+                  ) : (user?.role === 'superadmin' ? allTransactions.slice(0, 10) : donations).map((tx) => (
                     <tr key={tx.id} className="border-b border-gray-55 hover:bg-gray-50/50 transition-colors">
                       <td className="py-4 text-dark font-medium">{tx.pura?.name || 'Pura'}</td>
                       <td className="py-4 text-gray-500 text-sm">{new Date(tx.createdAt).toLocaleDateString('id-ID')}</td>
@@ -419,6 +636,233 @@ const Dashboard = () => {
       )}
 
       {/* ========================================================
+          SUPERADMIN TAB 2: PERSETUJUAN ADMIN
+          ======================================================== */}
+      {activeTab === 'applications' && user?.role === 'superadmin' && (
+        <div className="space-y-8 animate-fade-in">
+          <div className="flex justify-between items-center">
+            <h3 className="text-xl font-bold text-dark">Daftar Pengajuan Pengurus Pura</h3>
+          </div>
+
+          <div className="grid gap-6">
+            {applications.length === 0 ? (
+              <div className="text-center py-12 text-gray-500 bg-white rounded-2xl border border-gray-150 shadow-sm">
+                Tidak ada pengajuan verifikasi pengurus Pura saat ini.
+              </div>
+            ) : (
+              applications.map((app) => (
+                <div key={app.id} className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm p-6 space-y-6">
+                  {/* Title & Status */}
+                  <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-3 border-b border-gray-50 pb-4">
+                    <div>
+                      <h4 className="font-extrabold text-dark text-lg">{app.pura_name}</h4>
+                      <p className="text-gray-500 text-xs mt-0.5">Diajukan oleh: <span className="font-bold text-primary">{app.full_name}</span> ({app.jabatan})</p>
+                    </div>
+                    <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider self-start ${
+                      app.status === 'pending' ? 'bg-yellow-100 text-yellow-805' :
+                      app.status === 'approved' ? 'bg-green-100 text-green-805' :
+                      'bg-red-100 text-red-805'
+                    }`}>
+                      {app.status === 'pending' ? 'Pending (Ditinjau)' :
+                       app.status === 'approved' ? 'Disetujui' :
+                       'Ditolak'}
+                    </span>
+                  </div>
+
+                  {/* Two Column details */}
+                  <div className="grid md:grid-cols-2 gap-6 text-sm">
+                    {/* Personal Info */}
+                    <div className="space-y-2">
+                      <h5 className="font-bold text-dark border-b border-gray-50 pb-1 flex items-center gap-1.5 text-xs text-primary uppercase tracking-wider">
+                        <User size={14} />
+                        <span>Informasi Personal</span>
+                      </h5>
+                      <p><span className="text-gray-500 font-medium">Nama Lengkap:</span> <strong className="text-dark">{app.full_name}</strong></p>
+                      <p><span className="text-gray-500 font-medium">WhatsApp HP:</span> <strong className="text-dark">{app.phone}</strong></p>
+                      <p><span className="text-gray-500 font-medium">Email:</span> <strong className="text-dark">{app.email}</strong></p>
+                      <p><span className="text-gray-500 font-medium">Jabatan:</span> <strong className="text-dark">{app.jabatan}</strong></p>
+                    </div>
+
+                    {/* Pura Info */}
+                    <div className="space-y-2">
+                      <h5 className="font-bold text-dark border-b border-gray-50 pb-1 flex items-center gap-1.5 text-xs text-primary uppercase tracking-wider">
+                        <MapPin size={14} />
+                        <span>Informasi Pura</span>
+                      </h5>
+                      <p><span className="text-gray-500 font-medium">Nama Pura:</span> <strong className="text-dark">{app.pura_name}</strong></p>
+                      <p><span className="text-gray-500 font-medium">Alamat:</span> <strong className="text-dark">{app.pura_address}, Desa {app.pura_desa}, Kec. {app.pura_kecamatan}, {app.pura_kabupaten}, Prov. {app.pura_provinsi}</strong></p>
+                      <p><span className="text-gray-500 font-medium">Tahun Berdiri:</span> <strong className="text-dark">{app.pura_established_year || '-'}</strong></p>
+                      <p className="text-gray-600 italic text-xs leading-relaxed mt-1">"{app.pura_description}"</p>
+                    </div>
+                  </div>
+
+                  {/* Verification Documents */}
+                  <div className="p-4 bg-gray-50 border border-gray-100 rounded-xl space-y-4">
+                    <h5 className="font-bold text-dark text-xs uppercase tracking-wider flex items-center gap-1.5">
+                      <FileText size={14} className="text-primary" />
+                      <span>Dokumen Lampiran Pengaju</span>
+                    </h5>
+                    
+                    <div className="grid sm:grid-cols-2 gap-4">
+                      {/* SK */}
+                      <div className="bg-white p-3 border border-gray-150 rounded-xl flex items-center justify-between gap-2">
+                        <div>
+                          <p className="text-xs font-bold text-dark">Surat Keputusan (SK) Pengurus</p>
+                          <p className="text-2xs text-gray-500 font-medium uppercase mt-0.5">{app.sk_document_type.replace('_', ' ')}</p>
+                        </div>
+                        <a
+                          href={app.sk_document_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="px-3 py-1.5 bg-orange-50 hover:bg-primary hover:text-white text-primary text-2xs font-bold rounded-lg border border-orange-100 transition-all flex items-center gap-1"
+                        >
+                          <span>Buka Berkas</span>
+                        </a>
+                      </div>
+
+                      {/* Identity */}
+                      <div className="bg-white p-3 border border-gray-150 rounded-xl flex items-center justify-between gap-2">
+                        <div>
+                          <p className="text-xs font-bold text-dark">Identitas Pengenal (KTP / SIM)</p>
+                          <p className="text-2xs text-gray-500 font-medium uppercase mt-0.5">{app.identity_type}</p>
+                        </div>
+                        <a
+                          href={app.identity_document_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="px-3 py-1.5 bg-orange-50 hover:bg-primary hover:text-white text-primary text-2xs font-bold rounded-lg border border-orange-100 transition-all flex items-center gap-1"
+                        >
+                          <span>Buka Berkas</span>
+                        </a>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Review Actions */}
+                  {app.status === 'pending' && (
+                    <div className="flex gap-2 pt-4 border-t border-gray-50 justify-end">
+                      <button
+                        onClick={() => handleReviewApplication(app.id, 'approved')}
+                        className="px-5 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-xl text-xs font-bold shadow-md shadow-green-100 transition-all flex items-center gap-1"
+                      >
+                        <CheckCircle size={14} />
+                        <span>Setujui (Promosikan & Registrasi Pura)</span>
+                      </button>
+                      <button
+                        onClick={() => handleReviewApplication(app.id, 'rejected')}
+                        className="px-5 py-2.5 bg-red-650 hover:bg-red-750 text-white rounded-xl text-xs font-bold shadow-md shadow-red-100 transition-all flex items-center gap-1"
+                      >
+                        <XCircle size={14} />
+                        <span>Tolak Pengajuan</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================
+          SUPERADMIN TAB 3: PENGURUS & PURA LIST
+          ======================================================== */}
+      {activeTab === 'admins' && user?.role === 'superadmin' && (
+        <div className="space-y-8 animate-fade-in bg-white p-6 rounded-3xl border border-gray-50 shadow-sm">
+          <div className="border-b border-gray-100 pb-4">
+            <h3 className="text-xl font-bold text-dark">Daftar Pengurus & Pura Terkait</h3>
+            <p className="text-gray-500 text-xs mt-0.5">Daftar akun admin yang memegang hak pengelolaan Pura secara legal.</p>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-b border-gray-100 text-sm text-gray-500">
+                  <th className="pb-3 font-medium">Nama Pengurus</th>
+                  <th className="pb-3 font-medium">Email</th>
+                  <th className="pb-3 font-medium">Pura yang Dikelola</th>
+                  <th className="pb-3 font-medium">Lokasi Pura</th>
+                  <th className="pb-3 font-medium text-center">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {adminsList.length === 0 ? (
+                  <tr><td colSpan="5" className="py-4 text-center text-gray-500">Belum ada admin terdaftar</td></tr>
+                ) : adminsList.map((adm) => {
+                  const pura = adm.managedPuras && adm.managedPuras[0];
+                  return (
+                    <tr key={adm.id} className="border-b border-gray-55 hover:bg-gray-50/50 transition-colors text-sm">
+                      <td className="py-4 text-dark font-bold">{adm.name}</td>
+                      <td className="py-4 text-gray-655">{adm.email}</td>
+                      <td className="py-4 text-dark font-semibold">{pura ? pura.name : <span className="text-gray-400 italic">Belum dikaitkan</span>}</td>
+                      <td className="py-4 text-gray-500 max-w-xs truncate">{pura ? pura.address : '-'}</td>
+                      <td className="py-4 text-center">
+                        <span className={`inline-block px-2.5 py-0.5 text-2xs font-bold rounded-full border ${
+                          pura ? 'bg-green-50 text-green-700 border-green-100' : 'bg-red-50 text-red-700 border-red-100'
+                        }`}>
+                          {pura ? 'Verified' : 'Unassigned'}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================
+          SUPERADMIN TAB 4: SYSTEM TRANSACTIONS LOG
+          ======================================================== */}
+      {activeTab === 'transactions' && user?.role === 'superadmin' && (
+        <div className="space-y-8 animate-fade-in bg-white p-6 rounded-3xl border border-gray-50 shadow-sm">
+          <div className="border-b border-gray-100 pb-4">
+            <h3 className="text-xl font-bold text-dark">Log Transaksi Sistem (Lengkap)</h3>
+            <p className="text-gray-500 text-xs mt-0.5">Daftar rekapan seluruh penyaluran dana punia umat ke seluruh Pura.</p>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-b border-gray-100 text-sm text-gray-500">
+                  <th className="pb-3 font-medium">Donatur</th>
+                  <th className="pb-3 font-medium">Target Pura</th>
+                  <th className="pb-3 font-medium">Tanggal</th>
+                  <th className="pb-3 font-medium">Metode</th>
+                  <th className="pb-3 font-medium text-right">Nominal</th>
+                  <th className="pb-3 font-medium text-center">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {allTransactions.length === 0 ? (
+                  <tr><td colSpan="6" className="py-4 text-center text-gray-500">Belum ada transaksi di platform</td></tr>
+                ) : allTransactions.map((tx) => (
+                  <tr key={tx.id} className="border-b border-gray-55 hover:bg-gray-50/50 transition-colors text-sm">
+                    <td className="py-4 text-dark font-bold">
+                      {tx.is_anonymous ? 'Anonim' : (tx.donatur ? tx.donatur.name : 'Anonim')}
+                    </td>
+                    <td className="py-4 text-gray-700 font-semibold">{tx.pura?.name || 'Pura'}</td>
+                    <td className="py-4 text-gray-500">{new Date(tx.createdAt).toLocaleDateString('id-ID')} {new Date(tx.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</td>
+                    <td className="py-4 text-gray-550 uppercase font-medium text-xs">{tx.payment?.payment_type || 'pending'}</td>
+                    <td className="py-4 text-dark font-extrabold text-right">Rp {Number(tx.amount).toLocaleString('id-ID')}</td>
+                    <td className="py-4 text-center">
+                      <span className={`inline-block px-3 py-1 text-2xs font-bold rounded-full ${
+                        tx.payment?.transaction_status === 'success' || tx.payment?.transaction_status === 'settlement' ? 'bg-green-50 text-green-700' : 
+                        tx.payment?.transaction_status === 'pending' ? 'bg-yellow-50 text-yellow-700' : 'bg-red-50 text-red-700'
+                      }`}>
+                        {tx.payment?.transaction_status || 'pending'}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================
           TAB 2: KELOLA PURA (Admin Only)
           ======================================================== */}
       {activeTab === 'pura_management' && user?.role === 'admin' && (
@@ -426,7 +870,8 @@ const Dashboard = () => {
           {/* Header Actions */}
           <div className="flex justify-between items-center">
             <h3 className="text-xl font-bold text-dark">Pura yang Anda Kelola</h3>
-            {!editingPura && (
+            {/* Constraint: 1 Pura per admin. Disable adding new pura if they already manage one */}
+            {!editingPura && managedPuras.length === 0 && (
               <button 
                 onClick={() => setShowAddPura(!showAddPura)}
                 className="bg-primary text-white px-4 py-2 rounded-xl font-semibold hover:bg-orange-600 transition-all flex items-center gap-2 text-sm shadow-md shadow-orange-100"
@@ -441,8 +886,8 @@ const Dashboard = () => {
             )}
           </div>
 
-          {/* Form Tambah Pura */}
-          {showAddPura && (
+          {/* Form Tambah Pura (Constraint Fallback) */}
+          {showAddPura && managedPuras.length === 0 && (
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-orange-100 animate-fade-in">
               <h4 className="text-lg font-bold text-dark mb-4">Form Tambah Pura Baru</h4>
               <form onSubmit={handleAddPura} className="space-y-4">
@@ -510,7 +955,7 @@ const Dashboard = () => {
           <div className="grid md:grid-cols-2 gap-6">
             {managedPuras.length === 0 ? (
               <div className="col-span-2 text-center py-12 text-gray-500 bg-white rounded-2xl border border-gray-100">
-                Anda belum mendaftarkan Pura. Klik tombol di atas untuk menambah Pura baru.
+                Anda belum memiliki Pura yang diverifikasi. Tunggu persetujuan pengaju pengurus Pura Anda.
               </div>
             ) : managedPuras.map((pura) => (
               <div key={pura.id} className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col">
@@ -527,14 +972,14 @@ const Dashboard = () => {
                       <MapPin size={14} className="text-primary flex-shrink-0" />
                       <span className="truncate">{pura.address}</span>
                     </p>
-                    <p className="text-gray-600 text-sm line-clamp-2 mb-4">{pura.description}</p>
+                    <p className="text-gray-655 text-sm line-clamp-2 mb-4">{pura.description}</p>
                   </div>
                   <div className="flex gap-2 pt-2 border-t border-gray-50">
                     <button onClick={() => { setEditingPura(pura); setEditingEvent(null); setShowAddPura(false); }} className="flex-1 bg-orange-50 text-primary py-2 rounded-lg font-semibold hover:bg-primary hover:text-white transition-all text-xs flex items-center justify-center gap-1">
                       <Edit size={14} />
                       <span>Edit Info Pura</span>
                     </button>
-                    <a href={`/pura/${pura.id}`} target="_blank" rel="noopener noreferrer" className="px-3 bg-gray-50 text-gray-600 hover:bg-gray-100 py-2 rounded-lg font-semibold transition-all text-xs flex items-center justify-center">
+                    <a href={`/pura/${pura.id}`} target="_blank" rel="noopener noreferrer" className="px-3 bg-gray-50 text-gray-650 hover:bg-gray-100 py-2 rounded-lg font-semibold transition-all text-xs flex items-center justify-center">
                       Lihat Halaman
                     </a>
                   </div>
@@ -663,7 +1108,7 @@ const Dashboard = () => {
                   <button type="submit" disabled={isSubmittingEvent} className="bg-primary text-white px-6 py-2.5 rounded-xl font-bold hover:bg-orange-600 transition-all text-sm shadow-md">
                     {isSubmittingEvent ? 'Menyimpan...' : 'Perbarui Acara'}
                   </button>
-                  <button type="button" onClick={() => setEditingEvent(null)} className="bg-gray-100 text-gray-600 px-6 py-2.5 rounded-xl font-semibold hover:bg-gray-200 transition-all text-sm">
+                  <button type="button" onClick={() => setEditingEvent(null)} className="bg-gray-100 text-gray-605 px-6 py-2.5 rounded-xl font-semibold hover:bg-gray-200 transition-all text-sm">
                     Batal
                   </button>
                 </div>
@@ -675,7 +1120,7 @@ const Dashboard = () => {
           <div className="space-y-4">
             {managedPuras.length === 0 ? (
               <div className="text-center py-12 text-gray-500 bg-white rounded-2xl border border-gray-100">
-                Mendaftarlah Pura terlebih dahulu di tab "Kelola Pura" sebelum bisa menambahkan acara.
+                Anda belum memiliki Pura yang terverifikasi.
               </div>
             ) : events.length === 0 ? (
               <div className="text-center py-12 text-gray-500 bg-white rounded-2xl border border-gray-100">

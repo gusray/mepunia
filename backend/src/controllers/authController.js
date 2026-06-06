@@ -4,7 +4,7 @@ const { User } = require('../models');
 
 const register = async (req, res) => {
   try {
-    const { name, email, password, role } = req.body;
+    const { name, email, password } = req.body;
 
     // Check if user already exists
     const existingUser = await User.findOne({ where: { email } });
@@ -16,16 +16,24 @@ const register = async (req, res) => {
     const saltRounds = 10;
     const password_hash = await bcrypt.hash(password, saltRounds);
 
-    // Create user
+    // Create user (Always default to 'user' for public registration)
     const newUser = await User.create({
       name,
       email,
       password_hash,
-      role: role || 'user',
+      role: 'user',
     });
+
+    // Generate JWT for automatic login
+    const token = jwt.sign(
+      { id: newUser.id, email: newUser.email, role: newUser.role },
+      process.env.JWT_SECRET || 'fallback_secret',
+      { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+    );
 
     res.status(201).json({
       message: 'User registered successfully',
+      token,
       user: {
         id: newUser.id,
         name: newUser.name,

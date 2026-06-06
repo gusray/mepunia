@@ -16,9 +16,18 @@ const Register = () => {
     setError('');
     setLoading(true);
     try {
-      await api.post('/auth/register', { name, email, password, role });
-      alert('Registrasi berhasil! Silakan masuk.');
-      navigate('/login');
+      const response = await api.post('/auth/register', { name, email, password });
+      localStorage.setItem('token', response.data.token);
+      localStorage.setItem('user', JSON.stringify(response.data.user));
+      window.dispatchEvent(new Event('storage')); // Trigger update for Navbar
+
+      if (role === 'admin') {
+        alert('Registrasi berhasil! Silakan isi formulir pengajuan pengurus Pura.');
+        navigate('/apply-admin');
+      } else {
+        alert('Registrasi berhasil! Selamat bergabung.');
+        navigate('/dashboard');
+      }
     } catch (err) {
       setError(err.response?.data?.message || 'Gagal mendaftar. Silakan coba lagi.');
     } finally {
