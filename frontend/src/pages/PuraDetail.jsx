@@ -424,6 +424,25 @@ const PuraDetail = () => {
                   </label>
                 </div>
 
+                {amount >= 10000 && (
+                  <div className="p-3 bg-gray-50 border border-gray-150 rounded-xl space-y-1.5 text-xs text-gray-500 animate-fade-in">
+                    <p className="font-bold text-dark flex justify-between">
+                      <span>Estimasi Dana Bersih Diterima Pura:</span>
+                    </p>
+                    <div className="grid grid-cols-2 gap-2 mt-1">
+                      <div className="bg-white p-2 rounded-lg border border-gray-100">
+                        <span className="text-2xs text-gray-400 block font-medium">QRIS (Potongan 0.7%)</span>
+                        <strong className="text-sm text-primary block mt-0.5">Rp {Math.round(amount * 0.993).toLocaleString('id-ID')}</strong>
+                      </div>
+                      <div className="bg-white p-2 rounded-lg border border-gray-100">
+                        <span className="text-2xs text-gray-400 block font-medium">Bank VA (Potongan Rp4.000)</span>
+                        <strong className="text-sm text-primary block mt-0.5">Rp {Math.max(0, amount - 4000).toLocaleString('id-ID')}</strong>
+                      </div>
+                    </div>
+                    <p className="text-[10px] text-gray-400 leading-relaxed italic mt-1.5">*Potongan biaya transaksi langsung dikenakan oleh sistem gerbang pembayaran Midtrans.</p>
+                  </div>
+                )}
+
                 <button
                   type="submit"
                   disabled={isProcessing}

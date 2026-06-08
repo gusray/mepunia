@@ -146,7 +146,7 @@ const getPuraDonations = async (req, res) => {
       where: { pura_id },
       include: [
         { model: User, as: 'donatur', attributes: ['id', 'name'] },
-        { model: PaymentTransaction, as: 'payment', where: { transaction_status: 'success' }, attributes: ['gross_amount', 'transaction_time', 'payment_type'] }
+        { model: PaymentTransaction, as: 'payment', where: { transaction_status: 'success' }, attributes: ['gross_amount', 'transaction_time', 'payment_type', 'transaction_status'] }
       ],
       order: [['createdAt', 'DESC']],
     });
@@ -169,7 +169,7 @@ const getPublicPuraDonations = async (req, res) => {
           model: PaymentTransaction, 
           as: 'payment', 
           where: { transaction_status: 'success' }, 
-          attributes: ['gross_amount', 'transaction_time', 'payment_type'] 
+          attributes: ['gross_amount', 'transaction_time', 'payment_type', 'transaction_status'] 
         }
       ],
       order: [['createdAt', 'DESC']],

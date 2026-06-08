@@ -88,7 +88,7 @@ const Dashboard = () => {
   const [applications, setApplications] = useState([]);
   const [adminsList, setAdminsList] = useState([]);
   const [allTransactions, setAllTransactions] = useState([]);
-  const [superadminStats, setSuperadminStats] = useState({ totalIncome: 0, totalPuras: 0, totalAdmins: 0 });
+  const [superadminStats, setSuperadminStats] = useState({ totalIncome: 0, totalIncomeNet: 0, totalPuras: 0, totalAdmins: 0 });
 
   // Admin Pura States
   const [managedPuras, setManagedPuras] = useState([]);
@@ -96,6 +96,7 @@ const Dashboard = () => {
   const [editingPura, setEditingPura] = useState(null); // stores the pura object if editing
   const [newPura, setNewPura] = useState({ name: '', address: '', description: '', image_url: '' });
   const [isSubmittingPura, setIsSubmittingPura] = useState(false);
+  const [totalPuniaNet, setTotalPuniaNet] = useState(0);
 
   // Admin Event States
   const [events, setEvents] = useState([]);
@@ -133,6 +134,21 @@ const Dashboard = () => {
     }
   };
 
+  const calculateNetPunia = (amount, paymentType) => {
+    const numAmount = Number(amount);
+    if (!paymentType) return numAmount;
+    
+    const type = paymentType.toLowerCase();
+    if (type.includes('qris')) {
+      return numAmount * 0.993; // 0.7% MDR
+    } else if (type.includes('gopay') || type.includes('shopeepay') || type.includes('qris_gopay')) {
+      return numAmount * 0.98; // 2% MDR
+    } else if (type.includes('bank_transfer') || type.includes('va') || type.includes('echannel') || type.includes('bca') || type.includes('mandiri') || type.includes('bni') || type.includes('bri') || type.includes('permata')) {
+      return Math.max(0, numAmount - 4000); // Rp4.000 flat VA fee
+    }
+    return numAmount;
+  };
+
   const fetchSuperAdminData = async () => {
     try {
       // 1. Applications
@@ -151,6 +167,10 @@ const Dashboard = () => {
       // Calculate stats
       const successTx = txData.filter(t => t.payment?.transaction_status === 'success' || t.payment?.transaction_status === 'settlement');
       const totalIncome = successTx.reduce((sum, item) => sum + Number(item.amount), 0);
+      const totalIncomeNet = successTx.reduce((sum, item) => {
+        const payType = item.payment?.payment_type;
+        return sum + calculateNetPunia(item.amount, payType);
+      }, 0);
       
       const adminCount = adminsRes.data.length;
       
@@ -159,6 +179,7 @@ const Dashboard = () => {
 
       setSuperadminStats({
         totalIncome,
+        totalIncomeNet,
         totalPuras,
         totalAdmins: adminCount
       });
@@ -185,7 +206,22 @@ const Dashboard = () => {
 
     const fetchDonations = async () => {
       try {
-        const res = await api.get('/donations/history');
+        let res;
+        if (userData.role === 'admin') {
+          const purasRes = await api.get('/puras');
+          const myPuras = purasRes.data.filter(p => p.admin_id === userData.id);
+          if (myPuras.length > 0) {
+            res = await api.get(`/donations/pura/${myPuras[0].id}`);
+          } else {
+            setDonations([]);
+            setTotalPunia(0);
+            setTotalPuniaNet(0);
+            setPuraCount(0);
+            return;
+          }
+        } else {
+          res = await api.get('/donations/history');
+        }
         const data = res.data;
         setDonations(data);
         
@@ -198,9 +234,19 @@ const Dashboard = () => {
         // Calculate stats using only success donations
         const total = successDonations.reduce((acc, curr) => acc + Number(curr.amount), 0);
         setTotalPunia(total);
+
+        const totalNet = successDonations.reduce((acc, curr) => {
+          const payType = curr.payment?.payment_type;
+          return acc + calculateNetPunia(curr.amount, payType);
+        }, 0);
+        setTotalPuniaNet(totalNet);
         
-        const uniquePuras = new Set(data.map(d => d.pura_id));
-        setPuraCount(uniquePuras.size);
+        if (userData.role === 'admin') {
+          setPuraCount(successDonations.length);
+        } else {
+          const uniquePuras = new Set(data.map(d => d.pura_id));
+          setPuraCount(uniquePuras.size);
+        }
       } catch (error) {
         console.error('Failed to fetch donations', error);
       }
@@ -511,8 +557,12 @@ const Dashboard = () => {
               <div className="bg-gradient-to-br from-primary to-orange-400 p-6 rounded-2xl text-white shadow-lg shadow-orange-100 transition-all hover:scale-[1.01]">
                 <div className="flex justify-between items-start mb-4">
                   <div>
-                    <p className="text-orange-50 mb-1 font-medium">Total Dana Punia Platform</p>
-                    <h2 className="text-3xl font-extrabold">Rp {superadminStats.totalIncome.toLocaleString('id-ID')}</h2>
+                    <p className="text-orange-50 mb-1 font-medium text-xs">Total Dana Punia Platform</p>
+                    <h2 className="text-2xl font-extrabold">Rp {superadminStats.totalIncome.toLocaleString('id-ID')}</h2>
+                    <div className="mt-2 pt-2 border-t border-white/20">
+                      <p className="text-orange-100/90 text-2xs font-medium">Dana Bersih (Setelah Midtrans):</p>
+                      <p className="text-sm font-bold text-white">Rp {superadminStats.totalIncomeNet ? Math.round(superadminStats.totalIncomeNet).toLocaleString('id-ID') : 0}</p>
+                    </div>
                   </div>
                   <div className="p-2 bg-white/20 rounded-xl backdrop-blur-sm">
                     <CreditCard size={24} />
@@ -549,8 +599,16 @@ const Dashboard = () => {
               <div className="bg-gradient-to-br from-primary to-orange-400 p-6 rounded-2xl text-white shadow-lg shadow-orange-100 transition-all hover:scale-[1.01]">
                 <div className="flex justify-between items-start mb-4">
                   <div>
-                    <p className="text-orange-50 mb-1 font-medium">Total Dana Punia</p>
-                    <h2 className="text-3xl font-extrabold">Rp {totalPunia.toLocaleString('id-ID')}</h2>
+                    <p className="text-orange-50 mb-1 font-medium text-xs">
+                      {user?.role === 'admin' ? 'Total Dana Punia Pura' : 'Total Dana Punia'}
+                    </p>
+                    <h2 className="text-2xl font-extrabold">Rp {totalPunia.toLocaleString('id-ID')}</h2>
+                    {user?.role === 'admin' && (
+                      <div className="mt-2 pt-2 border-t border-white/20">
+                        <p className="text-orange-100/90 text-2xs font-medium">Dana Bersih (Setelah Midtrans):</p>
+                        <p className="text-sm font-bold text-white">Rp {Math.round(totalPuniaNet).toLocaleString('id-ID')}</p>
+                      </div>
+                    )}
                   </div>
                   <div className="p-2 bg-white/20 rounded-xl backdrop-blur-sm">
                     <CreditCard size={24} />
@@ -561,7 +619,9 @@ const Dashboard = () => {
               <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 transition-all hover:scale-[1.01]">
                 <div className="flex justify-between items-start mb-4">
                   <div>
-                    <p className="text-gray-500 mb-1 font-medium">Pura Dibantu</p>
+                    <p className="text-gray-500 mb-1 font-medium text-xs">
+                      {user?.role === 'admin' ? 'Transaksi Sukses' : 'Pura Dibantu'}
+                    </p>
                     <h2 className="text-3xl font-extrabold text-dark">{puraCount}</h2>
                   </div>
                   <div className="p-2 bg-orange-50 text-primary rounded-xl">
