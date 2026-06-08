@@ -98,6 +98,20 @@ const Dashboard = () => {
   const [isSubmittingPura, setIsSubmittingPura] = useState(false);
   const [totalPuniaNet, setTotalPuniaNet] = useState(0);
 
+  // Admin Pura Withdrawal States
+  const [withdrawalRequests, setWithdrawalRequests] = useState([]);
+  const [availableBalance, setAvailableBalance] = useState(0);
+  const [totalWithdrawn, setTotalWithdrawn] = useState(0);
+  const [newWithdrawal, setNewWithdrawal] = useState({ amount: '', bank_name: 'BCA', account_number: '', account_name: '', admin_notes: '' });
+  const [isSubmittingWithdrawal, setIsSubmittingWithdrawal] = useState(false);
+  const [isFetchingWithdrawals, setIsFetchingWithdrawals] = useState(false);
+
+  // Superadmin Review Notes Modal State
+  const [reviewNote, setReviewNote] = useState('');
+  const [selectedWithdrawalForReview, setSelectedWithdrawalForReview] = useState(null);
+  const [reviewStatus, setReviewStatus] = useState(''); // 'approved' or 'rejected'
+  const [showReviewModal, setShowReviewModal] = useState(false);
+
   // Admin Event States
   const [events, setEvents] = useState([]);
   const [showAddEvent, setShowAddEvent] = useState(false);
@@ -147,6 +161,83 @@ const Dashboard = () => {
       return Math.max(0, numAmount - 4000); // Rp4.000 flat VA fee
     }
     return numAmount;
+  };
+
+  useEffect(() => {
+    const activeWithdrawalsSum = withdrawalRequests
+      .filter(w => w.status === 'pending' || w.status === 'approved')
+      .reduce((sum, w) => sum + Number(w.amount), 0);
+    setAvailableBalance(Math.max(0, totalPuniaNet - activeWithdrawalsSum));
+  }, [totalPuniaNet, withdrawalRequests]);
+
+  const fetchWithdrawalData = async () => {
+    const userData = JSON.parse(localStorage.getItem('user') || '{}');
+    if (userData.role === 'admin') {
+      try {
+        setIsFetchingWithdrawals(true);
+        const res = await api.get('/withdrawals/history');
+        setWithdrawalRequests(res.data);
+        const approved = res.data.filter(w => w.status === 'approved').reduce((sum, w) => sum + Number(w.amount), 0);
+        setTotalWithdrawn(approved);
+      } catch (error) {
+        console.error('Failed to fetch withdrawal history', error);
+      } finally {
+        setIsFetchingWithdrawals(false);
+      }
+    } else if (userData.role === 'superadmin') {
+      try {
+        setIsFetchingWithdrawals(true);
+        const res = await api.get('/superadmin/withdrawals');
+        setWithdrawalRequests(res.data);
+      } catch (error) {
+        console.error('Failed to fetch platform withdrawals', error);
+      } finally {
+        setIsFetchingWithdrawals(false);
+      }
+    }
+  };
+
+  const handleAddWithdrawal = async (e) => {
+    e.preventDefault();
+    if (Number(newWithdrawal.amount) <= 0) {
+      alert('Nominal penarikan harus lebih besar dari Rp 0.');
+      return;
+    }
+    if (Number(newWithdrawal.amount) > availableBalance) {
+      alert(`Gagal: Nominal penarikan melebihi saldo tersedia (Rp ${Math.round(availableBalance).toLocaleString('id-ID')})`);
+      return;
+    }
+    setIsSubmittingWithdrawal(true);
+    try {
+      await api.post('/withdrawals', newWithdrawal);
+      alert('Pengajuan penarikan dana berhasil diajukan!');
+      setNewWithdrawal(prev => ({ ...prev, amount: '', admin_notes: '' }));
+      fetchWithdrawalData();
+    } catch (error) {
+      console.error('Failed to submit withdrawal request', error);
+      alert('Gagal mengajukan penarikan: ' + (error.response?.data?.message || error.message));
+    } finally {
+      setIsSubmittingWithdrawal(false);
+    }
+  };
+
+  const handleReviewWithdrawal = async (e) => {
+    e.preventDefault();
+    if (!selectedWithdrawalForReview) return;
+    try {
+      const res = await api.post(`/superadmin/withdrawals/${selectedWithdrawalForReview.id}/review`, {
+        status: reviewStatus,
+        superadmin_notes: reviewNote
+      });
+      alert(res.data.message);
+      setShowReviewModal(false);
+      setSelectedWithdrawalForReview(null);
+      setReviewNote('');
+      fetchWithdrawalData();
+    } catch (error) {
+      console.error('Failed to review withdrawal', error);
+      alert('Gagal memproses pengajuan: ' + (error.response?.data?.message || error.message));
+    }
   };
 
   const fetchSuperAdminData = async () => {
@@ -301,10 +392,14 @@ const Dashboard = () => {
 
     if (userData.role === 'superadmin') {
       fetchSuperAdminData();
+      fetchWithdrawalData();
     } else {
       fetchDonations();
       fetchAdminData();
       fetchAppStatus();
+      if (userData.role === 'admin') {
+        fetchWithdrawalData();
+      }
     }
   }, []);
 
@@ -493,6 +588,7 @@ const Dashboard = () => {
             { id: 'applications', label: 'Persetujuan Admin', icon: Shield },
             { id: 'admins', label: 'Pengurus & Pura', icon: User },
             { id: 'transactions', label: 'Log Transaksi', icon: FileText },
+            { id: 'withdrawal_approvals', label: 'Persetujuan Tarik Dana', icon: Download },
           ].map((tab) => {
             const Icon = tab.icon;
             return (
@@ -520,6 +616,7 @@ const Dashboard = () => {
             { id: 'overview', label: 'Ringkasan', icon: CreditCard },
             { id: 'pura_management', label: 'Kelola Pura', icon: MapPin },
             { id: 'event_management', label: 'Kelola Acara', icon: Calendar },
+            { id: 'withdrawal_management', label: 'Tarik Dana', icon: Download },
           ].map((tab) => {
             const Icon = tab.icon;
             return (
@@ -839,7 +936,7 @@ const Dashboard = () => {
                       </button>
                       <button
                         onClick={() => handleReviewApplication(app.id, 'rejected')}
-                        className="px-5 py-2.5 bg-red-650 hover:bg-red-750 text-white rounded-xl text-xs font-bold shadow-md shadow-red-100 transition-all flex items-center gap-1"
+                        className="px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold shadow-md shadow-red-100 transition-all flex items-center gap-1"
                       >
                         <XCircle size={14} />
                         <span>Tolak Pengajuan</span>
@@ -998,7 +1095,7 @@ const Dashboard = () => {
                       <button
                         type="button"
                         onClick={() => setNewPura(prev => ({ ...prev, image_url: '' }))}
-                        className="absolute top-2 right-2 bg-red-650 text-white p-2 rounded-full hover:bg-red-750 transition-all shadow-md"
+                        className="absolute top-2 right-2 bg-red-600 text-white p-2 rounded-full hover:bg-red-700 transition-all shadow-md"
                       >
                         <Trash2 size={16} />
                       </button>
@@ -1059,7 +1156,7 @@ const Dashboard = () => {
                       <button
                         type="button"
                         onClick={() => setEditingPura(prev => ({ ...prev, image_url: '' }))}
-                        className="absolute top-2 right-2 bg-red-650 text-white p-2 rounded-full hover:bg-red-750 transition-all shadow-md"
+                        className="absolute top-2 right-2 bg-red-600 text-white p-2 rounded-full hover:bg-red-700 transition-all shadow-md"
                       >
                         <Trash2 size={16} />
                       </button>
@@ -1331,6 +1428,382 @@ const Dashboard = () => {
                 );
               })
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================
+          TAB 4: KELOLA PENARIKAN (Admin Pura Only)
+          ======================================================== */}
+      {activeTab === 'withdrawal_management' && user?.role === 'admin' && (
+        <div className="space-y-8 animate-fade-in">
+          <div className="border-b border-gray-150 pb-4 flex justify-between items-center">
+            <div>
+              <h3 className="text-xl font-bold text-dark">Simulasi Penarikan Dana Pura</h3>
+              <p className="text-gray-500 text-xs mt-0.5">Ajukan penarikan dana punia bersih yang telah terhimpun ke rekening Pura.</p>
+            </div>
+          </div>
+
+          {/* Financial Summary Cards */}
+          <div className="grid sm:grid-cols-3 gap-6">
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between gap-4">
+              <div>
+                <p className="text-2xs text-gray-400 font-bold uppercase tracking-wider">Total Kas Bersih</p>
+                <h3 className="text-2xl font-extrabold text-dark mt-1">Rp {Math.round(totalPuniaNet).toLocaleString('id-ID')}</h3>
+              </div>
+              <div className="p-3 bg-green-50 text-green-600 rounded-xl">
+                <CreditCard size={20} />
+              </div>
+            </div>
+
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between gap-4">
+              <div>
+                <p className="text-2xs text-gray-400 font-bold uppercase tracking-wider">Dana Sudah Ditarik</p>
+                <h3 className="text-2xl font-extrabold text-dark mt-1">Rp {totalWithdrawn.toLocaleString('id-ID')}</h3>
+              </div>
+              <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
+                <CheckCircle size={20} />
+              </div>
+            </div>
+
+            <div className="bg-gradient-to-br from-primary to-orange-400 p-6 rounded-2xl text-white shadow-lg shadow-orange-100 flex items-center justify-between gap-4">
+              <div>
+                <p className="text-2xs text-orange-100 font-bold uppercase tracking-wider">Saldo Tersedia Ditarik</p>
+                <h3 className="text-2xl font-extrabold mt-1">Rp {Math.round(availableBalance).toLocaleString('id-ID')}</h3>
+              </div>
+              <div className="p-3 bg-white/20 rounded-xl backdrop-blur-sm">
+                <Download size={20} />
+              </div>
+            </div>
+          </div>
+
+          <div className="grid lg:grid-cols-3 gap-8 items-start">
+            {/* Form Request Withdrawal */}
+            <div className="lg:col-span-1 bg-white p-6 rounded-2xl shadow-sm border border-gray-100 space-y-4">
+              <h4 className="font-bold text-dark text-lg border-b border-gray-50 pb-2 flex items-center gap-2">
+                <Download size={18} className="text-primary" />
+                <span>Form Pengajuan</span>
+              </h4>
+
+              <form onSubmit={handleAddWithdrawal} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Pilih Bank</label>
+                  <select
+                    required
+                    value={newWithdrawal.bank_name}
+                    onChange={e => setNewWithdrawal({ ...newWithdrawal, bank_name: e.target.value })}
+                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent outline-none bg-white transition-all text-sm"
+                  >
+                    {['BCA', 'Mandiri', 'BNI', 'BRI', 'Permata', 'BPD Bali'].map(b => (
+                      <option key={b} value={b}>{b}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Nomor Rekening</label>
+                  <input
+                    required
+                    type="text"
+                    placeholder="e.g. 1234567890"
+                    value={newWithdrawal.account_number}
+                    onChange={e => setNewWithdrawal({ ...newWithdrawal, account_number: e.target.value })}
+                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Nama Pemilik Rekening</label>
+                  <input
+                    required
+                    type="text"
+                    placeholder="e.g. Ketut Suardika"
+                    value={newWithdrawal.account_name}
+                    onChange={e => setNewWithdrawal({ ...newWithdrawal, account_name: e.target.value })}
+                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Nominal Penarikan</label>
+                  <div className="relative">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-sm">Rp</span>
+                    <input
+                      required
+                      type="number"
+                      placeholder="e.g. 50000"
+                      value={newWithdrawal.amount}
+                      onChange={e => setNewWithdrawal({ ...newWithdrawal, amount: e.target.value })}
+                      className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all text-sm"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Catatan Tambahan (Opsional)</label>
+                  <textarea
+                    rows={2}
+                    placeholder="Keperluan renovasi, pembelian banten, piodalan..."
+                    value={newWithdrawal.admin_notes || ''}
+                    onChange={e => setNewWithdrawal({ ...newWithdrawal, admin_notes: e.target.value })}
+                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all text-sm"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isSubmittingWithdrawal || availableBalance <= 0}
+                  className="w-full bg-primary hover:bg-orange-600 disabled:bg-gray-200 text-white font-bold py-2.5 rounded-xl transition-all shadow-md text-sm shadow-orange-100 flex items-center justify-center gap-1.5"
+                >
+                  {isSubmittingWithdrawal ? 'Mengirim...' : 'Ajukan Penarikan'}
+                </button>
+              </form>
+            </div>
+
+            {/* History Table */}
+            <div className="lg:col-span-2 bg-white p-6 rounded-2xl shadow-sm border border-gray-100 space-y-4">
+              <h4 className="font-bold text-dark text-lg border-b border-gray-50 pb-2">Riwayat Penarikan Dana Pura</h4>
+              
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-gray-100 text-xs font-bold text-gray-400 uppercase">
+                      <th className="pb-3">Tanggal</th>
+                      <th className="pb-3">Tujuan</th>
+                      <th className="pb-3 text-right">Nominal</th>
+                      <th className="pb-3 text-center">Status</th>
+                      <th className="pb-3">Keterangan</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {withdrawalRequests.length === 0 ? (
+                      <tr>
+                        <td colSpan="5" className="py-8 text-center text-gray-500 text-sm italic">Belum ada riwayat pengajuan penarikan dana</td>
+                      </tr>
+                    ) : (
+                      withdrawalRequests.map(w => (
+                        <tr key={w.id} className="border-b border-gray-50 text-sm hover:bg-gray-55/50 transition-colors">
+                          <td className="py-4 text-gray-500 text-xs">{new Date(w.createdAt).toLocaleDateString('id-ID')}</td>
+                          <td className="py-4">
+                            <span className="font-bold text-dark text-xs block">{w.bank_name}</span>
+                            <span className="text-2xs text-gray-505 block mt-0.5">{w.account_number} a.n. {w.account_name}</span>
+                          </td>
+                          <td className="py-4 font-bold text-right text-dark">Rp {Number(w.amount).toLocaleString('id-ID')}</td>
+                          <td className="py-4 text-center">
+                            <span className={`inline-block px-2.5 py-0.5 rounded-full text-2xs font-bold uppercase ${
+                              w.status === 'pending' ? 'bg-yellow-50 text-yellow-600 border border-yellow-100' :
+                              w.status === 'approved' ? 'bg-green-50 text-green-600 border border-green-100' :
+                              'bg-red-50 text-red-600 border border-red-100'
+                            }`}>
+                              {w.status === 'pending' ? 'Pending' : w.status === 'approved' ? 'Disetujui' : 'Ditolak'}
+                            </span>
+                          </td>
+                          <td className="py-4 max-w-xs">
+                            {w.admin_notes && <p className="text-2xs text-gray-500 italic">"Admin: {w.admin_notes}"</p>}
+                            {w.superadmin_notes && (
+                              <p className={`text-2xs font-semibold mt-1 ${w.status === 'approved' ? 'text-green-600' : 'text-red-505'}`}>
+                                "Superadmin: {w.superadmin_notes}"
+                              </p>
+                            )}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================
+          TAB 5: PERSETUJUAN PENARIKAN (Superadmin Only)
+          ======================================================== */}
+      {activeTab === 'withdrawal_approvals' && user?.role === 'superadmin' && (
+        <div className="space-y-8 animate-fade-in bg-white p-6 rounded-3xl border border-gray-50 shadow-sm">
+          <div className="border-b border-gray-100 pb-4">
+            <h3 className="text-xl font-bold text-dark">Persetujuan Penarikan Dana Pura</h3>
+            <p className="text-gray-500 text-xs mt-0.5">Validasi pengajuan transfer penarikan dana kas yang diajukan oleh pengurus Pura.</p>
+          </div>
+
+          <div className="space-y-6">
+            {withdrawalRequests.filter(w => w.status === 'pending').length === 0 ? (
+              <div className="text-center py-12 text-gray-500 bg-gray-55 rounded-2xl border border-dashed border-gray-200 text-sm">
+                Tidak ada pengajuan penarikan dana pending saat ini.
+              </div>
+            ) : (
+              withdrawalRequests.filter(w => w.status === 'pending').map((w) => (
+                <div key={w.id} className="p-5 rounded-2xl border border-orange-100 bg-orange-50/10 space-y-4 flex flex-col md:flex-row md:items-center justify-between gap-6 hover:shadow-sm transition-all duration-300">
+                  <div className="space-y-2 flex-grow">
+                    <div className="flex items-center gap-2">
+                      <h4 className="font-extrabold text-dark text-base">{w.pura?.name || 'Nama Pura'}</h4>
+                      <span className="text-2xs bg-primary text-white px-2 py-0.5 rounded-full font-bold">Pending</span>
+                    </div>
+                    <p className="text-xs text-gray-500">
+                      Diajukan oleh: <span className="font-bold text-dark">{w.admin?.name || 'Admin'}</span> ({w.admin?.email})
+                    </p>
+                    <div className="grid sm:grid-cols-2 gap-4 text-xs mt-2 pt-2 border-t border-gray-100">
+                      <div>
+                        <span className="text-gray-400 font-medium block uppercase text-2xs tracking-wider">Rekening Tujuan:</span>
+                        <strong className="text-dark block mt-0.5">{w.bank_name} - {w.account_number}</strong>
+                        <span className="text-gray-500 font-medium block">a.n. {w.account_name}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-400 font-medium block uppercase text-2xs tracking-wider">Keterangan Pengaju:</span>
+                        <span className="text-gray-600 block mt-0.5 italic">"{w.admin_notes || '-'}"</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex-shrink-0 text-right flex flex-col items-end gap-3 justify-between">
+                    <div>
+                      <span className="text-2xs text-gray-400 font-bold block uppercase tracking-wider">Jumlah Penarikan:</span>
+                      <strong className="text-2xl font-black text-primary block mt-0.5">Rp {Number(w.amount).toLocaleString('id-ID')}</strong>
+                    </div>
+                    
+                    <div className="flex gap-2 w-full md:w-auto mt-2">
+                      <button
+                        onClick={() => {
+                          setSelectedWithdrawalForReview(w);
+                          setReviewStatus('approved');
+                          setShowReviewModal(true);
+                        }}
+                        className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-xl text-xs font-bold shadow-md shadow-green-100 transition-all flex items-center justify-center gap-1"
+                      >
+                        <CheckCircle size={13} />
+                        <span>Setujui & Transfer</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          setSelectedWithdrawalForReview(w);
+                          setReviewStatus('rejected');
+                          setShowReviewModal(true);
+                        }}
+                        className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold shadow-md shadow-red-100 transition-all flex items-center justify-center gap-1"
+                      >
+                        <XCircle size={13} />
+                        <span>Tolak</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          {/* Historical Processed Withdrawals */}
+          <div className="pt-8 border-t border-gray-100 mt-8 space-y-4">
+            <h4 className="font-bold text-dark text-base flex items-center gap-2">
+              <Clock size={16} className="text-primary" />
+              <span>Riwayat Proses Penarikan Dana (Platform)</span>
+            </h4>
+            
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-gray-100 text-xs font-bold text-gray-400 uppercase">
+                    <th className="pb-3">Pura</th>
+                    <th className="pb-3">Tujuan Transfer</th>
+                    <th className="pb-3 text-right">Nominal</th>
+                    <th className="pb-3 text-center">Status</th>
+                    <th className="pb-3">Keterangan Review</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {withdrawalRequests.filter(w => w.status !== 'pending').length === 0 ? (
+                    <tr>
+                      <td colSpan="5" className="py-8 text-center text-gray-500 text-sm italic">Belum ada riwayat pemrosesan penarikan dana</td>
+                    </tr>
+                  ) : (
+                    withdrawalRequests.filter(w => w.status !== 'pending').map(w => (
+                      <tr key={w.id} className="border-b border-gray-50 text-sm hover:bg-gray-50/50 transition-colors">
+                        <td className="py-4">
+                          <span className="font-bold text-dark text-xs block">{w.pura?.name || 'Pura'}</span>
+                          <span className="text-2xs text-gray-500 block mt-0.5">{w.admin?.name} ({new Date(w.updatedAt).toLocaleDateString('id-ID')})</span>
+                        </td>
+                        <td className="py-4">
+                          <span className="font-bold text-dark text-xs block">{w.bank_name}</span>
+                          <span className="text-2xs text-gray-500 block">{w.account_number} a.n. {w.account_name}</span>
+                        </td>
+                        <td className="py-4 font-bold text-right text-dark">Rp {Number(w.amount).toLocaleString('id-ID')}</td>
+                        <td className="py-4 text-center">
+                          <span className={`inline-block px-2.5 py-0.5 rounded-full text-2xs font-bold uppercase ${
+                            w.status === 'approved' ? 'bg-green-50 text-green-700 border border-green-100' :
+                            'bg-red-50 text-red-700 border border-red-100'
+                          }`}>
+                            {w.status === 'approved' ? 'Disetujui' : 'Ditolak'}
+                          </span>
+                        </td>
+                        <td className="py-4 max-w-xs">
+                          {w.admin_notes && <p className="text-2xs text-gray-500 italic">"Admin: {w.admin_notes}"</p>}
+                          {w.superadmin_notes && (
+                            <p className={`text-2xs font-semibold mt-1 ${w.status === 'approved' ? 'text-green-600' : 'text-red-500'}`}>
+                              "Superadmin: {w.superadmin_notes}"
+                            </p>
+                          )}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Superadmin Review Notes Modal */}
+      {showReviewModal && selectedWithdrawalForReview && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/50 flex items-center justify-center p-4 backdrop-blur-xs">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl border border-gray-100 space-y-4 animate-scale-up">
+            <div>
+              <h3 className="text-lg font-bold text-dark">
+                {reviewStatus === 'approved' ? 'Setujui & Konfirmasi Transfer' : 'Tolak Pengajuan Penarikan'}
+              </h3>
+              <p className="text-xs text-gray-500 mt-1">
+                Pura: <span className="font-bold text-primary">{selectedWithdrawalForReview.pura?.name}</span> <br />
+                Nominal: <span className="font-bold text-dark">Rp {Number(selectedWithdrawalForReview.amount).toLocaleString('id-ID')}</span>
+              </p>
+            </div>
+
+            <form onSubmit={handleReviewWithdrawal} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">
+                  {reviewStatus === 'approved' ? 'Catatan Transfer / Bukti Referensi' : 'Alasan Penolakan'}
+                </label>
+                <textarea
+                  required
+                  rows={3}
+                  value={reviewNote}
+                  onChange={e => setReviewNote(e.target.value)}
+                  placeholder={reviewStatus === 'approved' ? 'e.g. Transfer sukses via BNI. Ref: TRX-987654321.' : 'Tuliskan alasan penolakan agar pengurus Pura mengetahui kendala pengajuan...'}
+                  className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-primary focus:border-transparent outline-none text-sm transition-all"
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2 justify-end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowReviewModal(false);
+                    setSelectedWithdrawalForReview(null);
+                    setReviewNote('');
+                  }}
+                  className="px-5 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-xl text-xs font-semibold transition-all"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className={`px-5 py-2.5 text-white rounded-xl text-xs font-bold shadow-md transition-all ${
+                    reviewStatus === 'approved' ? 'bg-green-600 hover:bg-green-700 shadow-green-100' : 'bg-red-600 hover:bg-red-700 shadow-red-100'
+                  }`}
+                >
+                  {reviewStatus === 'approved' ? 'Konfirmasi Setuju' : 'Konfirmasi Tolak'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

@@ -8,6 +8,7 @@ const reportController = require('../controllers/reportController');
 const reminderController = require('../controllers/reminderController');
 const adminApplicationController = require('../controllers/adminApplicationController');
 const eventController = require('../controllers/eventController');
+const withdrawalController = require('../controllers/withdrawalController');
 
 const { authenticateToken, optionalAuthenticateToken, isAdmin, isSuperAdmin } = require('../middlewares/authMiddleware');
 
@@ -82,10 +83,16 @@ router.get('/events', eventController.getAllEvents);
 router.post('/admin-applications', authenticateToken, adminApplicationController.submitApplication);
 router.get('/admin-applications/status', authenticateToken, adminApplicationController.getApplicationStatus);
 
+// --- Withdrawal Routes ---
+router.post('/withdrawals', authenticateToken, isAdmin, withdrawalController.createWithdrawalRequest);
+router.get('/withdrawals/history', authenticateToken, isAdmin, withdrawalController.getPuraWithdrawalHistory);
+
 // --- Superadmin Routes ---
 router.get('/superadmin/applications', authenticateToken, isSuperAdmin, adminApplicationController.getAdminApplications);
 router.post('/superadmin/applications/:id/review', authenticateToken, isSuperAdmin, adminApplicationController.reviewApplication);
 router.get('/superadmin/admins', authenticateToken, isSuperAdmin, adminApplicationController.getAdminsAndPuras);
 router.get('/superadmin/transactions', authenticateToken, isSuperAdmin, adminApplicationController.getAllTransactions);
+router.get('/superadmin/withdrawals', authenticateToken, isSuperAdmin, withdrawalController.getAllWithdrawalRequests);
+router.post('/superadmin/withdrawals/:id/review', authenticateToken, isSuperAdmin, withdrawalController.reviewWithdrawalRequest);
 
 module.exports = router;

@@ -7,6 +7,7 @@ const Report = require('./report');
 const Reminder = require('./reminder');
 const Event = require('./event');
 const AdminApplication = require('./adminApplication');
+const WithdrawalRequest = require('./withdrawalRequest');
 
 // Define Associations
 
@@ -42,6 +43,14 @@ Reminder.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
 Pura.hasMany(Event, { foreignKey: 'pura_id', as: 'events', onDelete: 'CASCADE' });
 Event.belongsTo(Pura, { foreignKey: 'pura_id', as: 'pura' });
 
+// Pura has many WithdrawalRequests
+Pura.hasMany(WithdrawalRequest, { foreignKey: 'pura_id', as: 'withdrawalRequests', onDelete: 'CASCADE' });
+WithdrawalRequest.belongsTo(Pura, { foreignKey: 'pura_id', as: 'pura' });
+
+// User has many WithdrawalRequests
+User.hasMany(WithdrawalRequest, { foreignKey: 'admin_id', as: 'withdrawals' });
+WithdrawalRequest.belongsTo(User, { foreignKey: 'admin_id', as: 'admin' });
+
 module.exports = {
   sequelize,
   User,
@@ -52,5 +61,6 @@ module.exports = {
   Reminder,
   Event,
   AdminApplication,
+  WithdrawalRequest,
 };
 
